@@ -1,8 +1,8 @@
-// waypoint-live: connects every [wp-live] component on the page to its server-side instance over one
-// WebSocket. Events go up (wp-live-click, wp-live-input, wp-live-submit), the component's new HTML comes
+// waypoint-live: connects every component on the page (<app-counter data-live>) to its server-side instance
+// over one WebSocket. Events go up (data-on-click, -input, -change, -submit), the component's new HTML comes
 // back and is patched into place. Without the connection the page stays as the server rendered it.
 (() => {
-    const roots = [...document.querySelectorAll('[wp-live]')];
+    const roots = [...document.querySelectorAll('[data-live]')];
     if (roots.length === 0) return;
     roots.forEach((root, i) => { root.dataset.liveId = `c${i}`; });
     const byId = new Map(roots.map((root) => [root.dataset.liveId, root]));
@@ -17,50 +17,55 @@
     const connect = () => {
         socket = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/_live`);
         socket.onopen = () => {
-            // A new connection is a new circuit: the components start again from the page's props
+            // A new connection is a new circuit: the components start again from the page's inputs
             for (const root of roots) {
                 socket.send(JSON.stringify({
                     t: 'mount',
                     id: root.dataset.liveId,
-                    c: root.getAttribute('wp-live'),
-                    p: JSON.parse(root.getAttribute('wp-live-props') || '{}'),
+                    c: root.localName,
+                    p: JSON.parse(root.dataset.inputs || '{}'),
                 }));
             }
             for (const message of queue.splice(0)) socket.send(JSON.stringify(message));
-            document.documentElement.removeAttribute('wp-live-offline');
+            document.documentElement.removeAttribute('data-live-offline');
         };
         socket.onmessage = (event) => {
             const message = JSON.parse(event.data);
             const root = byId.get(message.id);
             if (!root) return;
             if (typeof message.html === 'string') patchChildren(root, message.html);
-            root.toggleAttribute('wp-live-error', message.error === true);
+            root.toggleAttribute('data-live-error', message.error === true);
         };
         socket.onclose = () => {
-            document.documentElement.setAttribute('wp-live-offline', '');
+            document.documentElement.setAttribute('data-live-offline', '');
             setTimeout(connect, 1000);
         };
     };
 
     const call = (el, attribute, args) => {
-        const root = el.closest('[wp-live]');
+        const root = el.closest('[data-live]');
         if (root) send({ t: 'call', id: root.dataset.liveId, m: el.getAttribute(attribute), a: args });
     };
 
-    Waypoint.directive('wp-live-click', 'click', (el, event) => {
+    // data-on-click="select" data-arg="Berlin": the method, with an optional string argument
+    Waypoint.directive('data-on-click', 'click', (el, event) => {
         event.preventDefault();
-        call(el, 'wp-live-click', el.hasAttribute('wp-live-arg') ? [el.getAttribute('wp-live-arg')] : []);
+        call(el, 'data-on-click', el.hasAttribute('data-arg') ? [el.dataset.arg] : []);
     });
 
     const pending = new WeakMap();
-    Waypoint.directive('wp-live-input', 'input', (el) => {
+    Waypoint.directive('data-on-input', 'input', (el) => {
         clearTimeout(pending.get(el));
-        pending.set(el, setTimeout(() => call(el, 'wp-live-input', [el.value]), 150));
+        pending.set(el, setTimeout(() => call(el, 'data-on-input', [el.value]), 150));
     });
 
-    Waypoint.directive('wp-live-submit', 'submit', (el, event) => {
+    Waypoint.directive('data-on-change', 'change', (el) => {
+        call(el, 'data-on-change', [el.type === 'checkbox' ? el.checked : el.value]);
+    });
+
+    Waypoint.directive('data-on-submit', 'submit', (el, event) => {
         event.preventDefault();
-        call(el, 'wp-live-submit', [Object.fromEntries(new FormData(el))]);
+        call(el, 'data-on-submit', [Object.fromEntries(new FormData(el))]);
     });
 
     // ponytail: patches by position, no keys; a reordered list rewrites its rows instead of moving them

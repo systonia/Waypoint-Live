@@ -2,73 +2,21 @@
 
 namespace Waypoint\Live;
 
-use Closure;
+use Attribute;
 
 /**
- * A live component: state in public or private properties, `#[Action]` methods the browser calls, render()
- * returning its HTML. Rendered once into the page by `$this->live(Class::class, $props)`, then created again
- * on the server when the browser connects, with the same props, and kept until the browser leaves. Services
- * come in through `#[Inject]` properties, as in a controller.
+ * Marks a class as a live component, Angular style:
+ *
+ *     #[Component(selector: 'app-counter', template: 'Counter.Template.php')]
+ *     final class Counter { public int $count = 0; public function increment(): void { $this->count++; } }
+ *
+ * The template path is relative to the class's file. Views place the component with
+ * `$this->live('app-counter', ['count' => 3])`; the browser only ever sees the selector.
  */
-abstract class Component
+#[Attribute(Attribute::TARGET_CLASS)]
+final class Component
 {
-    /** Set while the browser is connected: sends a new render. Null while rendered into the page. */
-    private ?Closure $push = null;
-
-    /** @var list<\Tenma\Timer> */
-    private array $timers = [];
-
-    /**
-     * Called once with the props from the page, before the first render. The props come back from the
-     * browser when it connects, so treat them like query parameters: never as proof of who the user is.
-     *
-     * @param array<string, mixed> $props
-     */
-    public function mount(array $props): void
+    public function __construct(public readonly string $selector, public readonly string $template)
     {
-    }
-
-    abstract public function render(): string;
-
-    /** Sends a new render to the browser outside an action (an action renders anyway). */
-    protected function changed(): void
-    {
-        if ($this->push !== null) {
-            ($this->push)();
-        }
-    }
-
-    /** Runs $work every $seconds and renders afterwards, while the browser is connected; nothing in the page render. */
-    protected function every(float $seconds, Closure $work): void
-    {
-        if ($this->push === null) {
-            return;
-        }
-        $this->timers[] = \Tenma::setInterval(function () use ($work): void {
-            $work();
-            $this->changed();
-        }, $seconds);
-    }
-
-    /** HTML-escapes a value for a template. */
-    protected function e(mixed $value): string
-    {
-        return htmlspecialchars(is_scalar($value) ? (string) $value : '', ENT_QUOTES);
-    }
-
-    /** @internal Circuit: the browser is connected; $push sends a render. */
-    public function connect(Closure $push): void
-    {
-        $this->push = $push;
-    }
-
-    /** @internal Circuit: the browser left; stops the timers. */
-    public function disconnect(): void
-    {
-        foreach ($this->timers as $timer) {
-            $timer->cancel();
-        }
-        $this->timers = [];
-        $this->push = null;
     }
 }

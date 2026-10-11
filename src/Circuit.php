@@ -5,29 +5,38 @@ namespace Waypoint\Live;
 use Closure;
 use InvalidArgumentException;
 use ReflectionMethod;
+use ReflectionObject;
 use Throwable;
 
 /**
  * One browser tab's components on the server, for as long as its WebSocket is open. Messages from the browser
- * (JSON): `{"t":"mount","id":"c0","c":"App\\Counter","p":{...}}` creates a component, `{"t":"call","id":"c0",
- * "m":"increment","a":[...]}` calls one of its #[Action] methods. Every change goes back as `{"id","html"}`,
- * a failure as `{"id","error":true}` without details; the circuit keeps running either way.
+ * (JSON): `{"t":"mount","id":"c0","c":"app-counter","p":{...}}` creates a component with its inputs,
+ * `{"t":"call","id":"c0","m":"increment","a":[...]}` calls a method its template wires up. Every change goes
+ * back as `{"id","html"}`, a failure as `{"id","error":true}` without details; the circuit keeps running.
  */
 final class Circuit
 {
     // ponytail: fixed limit per tab, an option once an app needs more
     private const MAX_COMPONENTS = 50;
 
-    /** @var array<string, Component> */
+    /** @var array<string, array{object, Template}> */
     private array $components = [];
 
+    /** @var array<string, list<Closure(): void>> Each component's timers, as functions that cancel them. */
+    private array $timers = [];
+
+    /** @var Closure(float, Closure(): void): (Closure(): void) */
+    private Closure $every;
+
     /**
-     * @param Closure(string): Component $create Creates an allowed component class, services injected.
+     * @param Closure(string, array<string, mixed>): array{object, Template} $create Creates a listed component with its inputs set.
      * @param Closure(string): void $send Writes one message to the browser.
-     * @param Closure(Throwable): void $report Logs a failed message.
+     * @param Closure(Throwable): void $report Logs a failure.
+     * @param (Closure(float, Closure(): void): (Closure(): void))|null $every Starts a timer and returns its cancel; Tenma's setInterval by default.
      */
-    public function __construct(private Closure $create, private Closure $send, private Closure $report)
+    public function __construct(private Closure $create, private Closure $send, private Closure $report, ?Closure $every = null)
     {
+        $this->every = $every ?? static fn (float $seconds, Closure $work): Closure => \Tenma::setInterval($work, $seconds)->cancel(...);
     }
 
     public function handle(string $message): void
@@ -49,41 +58,53 @@ final class Circuit
         }
     }
 
-    /** The browser left: every component stops its timers. */
+    /** The browser left: every timer stops. */
     public function close(): void
     {
-        foreach ($this->components as $component) {
-            $component->disconnect();
+        foreach ($this->timers as $cancels) {
+            foreach ($cancels as $cancel) {
+                $cancel();
+            }
         }
+        $this->timers = [];
         $this->components = [];
     }
 
-    private function mount(string $id, mixed $class, mixed $props): void
+    private function mount(string $id, mixed $selector, mixed $inputs): void
     {
         if (isset($this->components[$id]) || count($this->components) >= self::MAX_COMPONENTS) {
             throw new InvalidArgumentException("Cannot mount component '$id'");
         }
-        if (!is_string($class) || !is_array($props) || ($props !== [] && array_is_list($props))) {
-            throw new InvalidArgumentException('mount needs a class name and props as an object');
+        if (!is_string($selector) || !is_array($inputs) || ($inputs !== [] && array_is_list($inputs))) {
+            throw new InvalidArgumentException('mount needs a selector and inputs as an object');
         }
-        /** @var array<string, mixed> $props */
-        $component = ($this->create)($class);
-        $component->connect(fn () => $this->render($id));
-        $this->components[$id] = $component;
-        $component->mount($props);
+        /** @var array<string, mixed> $inputs */
+        [$component] = $this->components[$id] = ($this->create)($selector, $inputs);
         $this->render($id);
+        foreach ((new ReflectionObject($component))->getMethods() as $method) {
+            foreach ($method->getAttributes(Every::class) as $attribute) {
+                $this->timers[$id][] = ($this->every)($attribute->newInstance()->seconds, function () use ($id, $component, $method): void {
+                    try {
+                        $method->invoke($component);
+                        $this->render($id);
+                    } catch (Throwable $e) {
+                        ($this->report)($e);
+                    }
+                });
+            }
+        }
     }
 
     private function call(string $id, mixed $method, mixed $args): void
     {
-        $component = $this->components[$id] ?? throw new InvalidArgumentException("No component '$id'");
-        if (!is_string($method) || !method_exists($component, $method) || !is_array($args) || !array_is_list($args)) {
-            throw new InvalidArgumentException('call needs an action name and a list of arguments');
+        [$component, $template] = $this->components[$id] ?? throw new InvalidArgumentException("No component '$id'");
+        // Only what the template wires up: a public method elsewhere in the class stays out of reach
+        if (!is_string($method) || !in_array($method, $template->actions, true) || !is_array($args) || !array_is_list($args)) {
+            throw new InvalidArgumentException('call needs a method the template names and a list of arguments');
         }
         $reflection = new ReflectionMethod($component, $method);
-        // Only what the component opened up: never mount(), render() or any other public method
-        if (!$reflection->isPublic() || $reflection->isStatic() || $reflection->getAttributes(Action::class) === []) {
-            throw new InvalidArgumentException("'$method' is not an #[Action]");
+        if (!$reflection->isPublic() || $reflection->isStatic()) {
+            throw new InvalidArgumentException("'$method' is not a public method");
         }
         $reflection->invokeArgs($component, $args);
         $this->render($id);
@@ -91,9 +112,9 @@ final class Circuit
 
     private function render(string $id): void
     {
-        $component = $this->components[$id] ?? null;
-        if ($component !== null) {
-            ($this->send)(json_encode(['id' => $id, 'html' => $component->render()], JSON_THROW_ON_ERROR));
+        [$component, $template] = $this->components[$id] ?? [null, null];
+        if ($component !== null && $template !== null) {
+            ($this->send)(json_encode(['id' => $id, 'html' => $template->render($component)], JSON_THROW_ON_ERROR));
         }
     }
 }

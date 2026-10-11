@@ -2,43 +2,12 @@
 
 namespace Waypoint\Live\Tests;
 
-use InvalidArgumentException;
+use Closure;
 use PHPUnit\Framework\TestCase;
 use Throwable;
-use Waypoint\Live\{Action, Circuit, Component};
-
-final class Counter extends Component
-{
-    public int $count = 0;
-    public bool $unmounted = false;
-
-    public function mount(array $props): void
-    {
-        $this->count = is_int($props['start'] ?? null) ? $props['start'] : 0;
-    }
-
-    #[Action]
-    public function add(int $by): void
-    {
-        $this->count += $by;
-    }
-
-    /** Public, but not an #[Action]: the browser must not reach it. */
-    public function reset(): void
-    {
-        $this->count = 0;
-    }
-
-    public function render(): string
-    {
-        return "<output>{$this->count}</output>";
-    }
-
-    public function pushNow(): void
-    {
-        $this->changed();
-    }
-}
+use Waypoint\Container;
+use Waypoint\Live\{Circuit, LivePlugin};
+use Waypoint\Live\Tests\Fixtures\Counter;
 
 final class CircuitTest extends TestCase
 {
@@ -48,23 +17,27 @@ final class CircuitTest extends TestCase
     /** @var list<Throwable> */
     private array $reported = [];
 
-    /** @var array<string, Counter> */
-    private array $created = [];
+    /** @var list<array{float, Closure, bool}> started timers: seconds, work, cancelled */
+    private array $timers = [];
 
     private function circuit(): Circuit
     {
+        $live = new LivePlugin([Counter::class]);
+        $live->boot(new Container());
         return new Circuit(
-            function (string $class): Component {
-                if ($class !== Counter::class) {
-                    throw new InvalidArgumentException("'$class' is not allowed");
-                }
-                return $this->created[] = new Counter();
-            },
+            $live->create(...),
             function (string $message): void {
                 $this->sent[] = json_decode($message, true);
             },
             function (Throwable $e): void {
                 $this->reported[] = $e;
+            },
+            function (float $seconds, Closure $work): Closure {
+                $i = count($this->timers);
+                $this->timers[] = [$seconds, $work, false];
+                return function () use ($i): void {
+                    $this->timers[$i][2] = true;
+                };
             },
         );
     }
@@ -74,40 +47,45 @@ final class CircuitTest extends TestCase
         return json_encode($message, JSON_THROW_ON_ERROR);
     }
 
-    public function testMountRendersAndAnActionRendersAgain(): void
+    private static function html(int $count): string
+    {
+        return "<button data-on-click=\"add\" data-arg=\"1\">&lt;b&gt;</button>\n<output>$count</output>\n";
+    }
+
+    public function testMountRendersTheTemplateEscapedAndAMethodRendersAgain(): void
     {
         $circuit = $this->circuit();
-        $circuit->handle($this->message(['t' => 'mount', 'id' => 'c0', 'c' => Counter::class, 'p' => ['start' => 3]]));
-        $circuit->handle($this->message(['t' => 'call', 'id' => 'c0', 'm' => 'add', 'a' => [2]]));
+        $circuit->handle($this->message(['t' => 'mount', 'id' => 'c0', 'c' => 'test-counter', 'p' => ['count' => 3]]));
+        $circuit->handle($this->message(['t' => 'call', 'id' => 'c0', 'm' => 'add', 'a' => ['2']]));
 
         $this->assertSame([
-            ['id' => 'c0', 'html' => '<output>3</output>'],
-            ['id' => 'c0', 'html' => '<output>5</output>'],
+            ['id' => 'c0', 'html' => self::html(3)],
+            ['id' => 'c0', 'html' => self::html(5)],
         ], $this->sent);
         $this->assertSame([], $this->reported);
     }
 
-    public function testTheBrowserReachesOnlyActionsAndAllowedClasses(): void
+    public function testTheBrowserReachesOnlyTemplateMethodsInputsAndListedSelectors(): void
     {
         $circuit = $this->circuit();
-        $circuit->handle($this->message(['t' => 'mount', 'id' => 'c0', 'c' => Counter::class, 'p' => ['start' => 3]]));
+        $circuit->handle($this->message(['t' => 'mount', 'id' => 'c0', 'c' => 'test-counter', 'p' => ['count' => 3]]));
         $this->sent = [];
 
         $circuit->handle($this->message(['t' => 'call', 'id' => 'c0', 'm' => 'reset', 'a' => []]));
-        $circuit->handle($this->message(['t' => 'call', 'id' => 'c0', 'm' => 'mount', 'a' => [['start' => 99]]]));
-        $circuit->handle($this->message(['t' => 'call', 'id' => 'c0', 'm' => 'render', 'a' => []]));
+        $circuit->handle($this->message(['t' => 'call', 'id' => 'c0', 'm' => 'tick', 'a' => []]));
         $circuit->handle($this->message(['t' => 'call', 'id' => 'c0', 'm' => 'add', 'a' => ['not a number']]));
         $circuit->handle($this->message(['t' => 'call', 'id' => 'c9', 'm' => 'add', 'a' => [1]]));
-        $circuit->handle($this->message(['t' => 'mount', 'id' => 'c1', 'c' => \stdClass::class, 'p' => []]));
-        $circuit->handle($this->message(['t' => 'mount', 'id' => 'c0', 'c' => Counter::class, 'p' => []]));
+        $circuit->handle($this->message(['t' => 'mount', 'id' => 'c1', 'c' => Counter::class, 'p' => []]));
+        $circuit->handle($this->message(['t' => 'mount', 'id' => 'c2', 'c' => 'test-counter', 'p' => ['admin' => true]]));
+        $circuit->handle($this->message(['t' => 'mount', 'id' => 'c3', 'c' => 'test-counter', 'p' => ['label' => 'x']]));
+        $circuit->handle($this->message(['t' => 'mount', 'id' => 'c0', 'c' => 'test-counter', 'p' => []]));
 
-        $this->assertCount(7, $this->sent);
+        $this->assertCount(8, $this->sent);
         foreach ($this->sent as $reply) {
             $this->assertTrue($reply['error'] ?? false);
             $this->assertArrayNotHasKey('html', $reply);
         }
-        $this->assertCount(7, $this->reported);
-        $this->assertSame(3, $this->created[0]->count);
+        $this->assertCount(8, $this->reported);
     }
 
     public function testGarbageIsIgnoredWithoutAReply(): void
@@ -120,17 +98,19 @@ final class CircuitTest extends TestCase
         $this->assertSame([], $this->sent);
     }
 
-    public function testAComponentPushesUntilTheCircuitCloses(): void
+    public function testAnEveryMethodPushesUntilTheCircuitCloses(): void
     {
         $circuit = $this->circuit();
-        $circuit->handle($this->message(['t' => 'mount', 'id' => 'c0', 'c' => Counter::class, 'p' => []]));
+        $circuit->handle($this->message(['t' => 'mount', 'id' => 'c0', 'c' => 'test-counter', 'p' => []]));
         $this->sent = [];
 
-        $this->created[0]->count = 7;
-        $this->created[0]->pushNow();
-        $circuit->close();
-        $this->created[0]->pushNow();
+        $this->assertCount(1, $this->timers);
+        [$seconds, $tick] = $this->timers[0];
+        $this->assertSame(1.0, $seconds);
+        $tick();
+        $this->assertSame([['id' => 'c0', 'html' => self::html(1)]], $this->sent);
 
-        $this->assertSame([['id' => 'c0', 'html' => '<output>7</output>']], $this->sent);
+        $circuit->close();
+        $this->assertTrue($this->timers[0][2]);
     }
 }
