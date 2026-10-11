@@ -1,0 +1,31 @@
+{
+    "name": "systonia/waypoint-live",
+    "description": "Live components for Waypoint under Tenma: server-side PHP components, events and renders over one WebSocket, services called directly.",
+    "type": "library",
+    "license": ["MIT", "Apache-2.0"],
+    "repositories": [
+        { "type": "path", "url": "../Waypoint", "options": { "symlink": true } }
+    ],
+    "require": {
+        "php": ">=8.5",
+        "systonia/waypoint": "@dev"
+    },
+    "require-dev": {
+        "phpunit/phpunit": "^13.3",
+        "phpstan/phpstan": "^2.2"
+    },
+    "autoload": {
+        "psr-4": {
+            "Waypoint\\Live\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Waypoint\\Live\\Tests\\": "tests/"
+        }
+    },
+    "scripts": {
+        "test": "vendor/bin/phpunit --testdox",
+        "stan": "phpstan analyse"
+    }
+}

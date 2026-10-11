@@ -1,0 +1,10 @@
+parameters:
+    level: 10
+    paths:
+        - src
+    scanFiles:
+        - tenma.stub
+    ignoreErrors:
+        # #[Inject] properties are written by Waypoint's PropertyInjector
+        - identifier: property.onlyRead
+          path: src/LiveController.php

@@ -1,0 +1,16 @@
+{
+    "name": "systonia/waypoint-live-demo",
+    "description": "Live components demo: run with tenma index.php",
+    "type": "project",
+    "repositories": [
+        { "type": "path", "url": "../../Waypoint", "options": { "symlink": true } },
+        { "type": "path", "url": "..", "options": { "symlink": true } }
+    ],
+    "require": {
+        "systonia/waypoint": "@dev",
+        "systonia/waypoint-live": "@dev"
+    },
+    "autoload": {
+        "psr-4": { "Demo\\": "src/" }
+    }
+}
