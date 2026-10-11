@@ -177,3 +177,7 @@ components while they are parked. It is never in a URL, a cookie or storage.
 cd demo && composer install
 tenma index.php    # http://localhost:8090
 ```
+
+## License
+
+MIT or Apache-2.0, at your option.
