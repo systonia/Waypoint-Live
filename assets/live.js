@@ -1,11 +1,14 @@
 // waypoint-live: connects every component on the page (<app-counter data-live>) to its server-side instance
-// over one WebSocket. Events go up (data-on-click, -input, -change, -submit), the component's new HTML comes
+// over one WebSocket, children placed by templates included. Events go up (data-on-click, -input, -change, -submit), the component's new HTML comes
 // back and is patched into place. Without the connection the page stays as the server rendered it.
 (() => {
-    const roots = [...document.querySelectorAll('[data-live]')];
+    // Top-level components get an ID here; their children carry relative IDs (".0") from the server
+    const roots = [...document.querySelectorAll('[data-live]')].filter((el) => !el.parentElement.closest('[data-live]'));
     if (roots.length === 0) return;
-    roots.forEach((root, i) => { root.dataset.liveId = `c${i}`; });
-    const byId = new Map(roots.map((root) => [root.dataset.liveId, root]));
+    roots.forEach((root, i) => {
+        root.dataset.liveId = `c${i}`;
+        for (const child of root.querySelectorAll('[data-live]')) child.dataset.liveId = `c${i}${child.dataset.liveId}`;
+    });
     const queue = [];
     let socket = null;
 
@@ -31,10 +34,10 @@
         };
         socket.onmessage = (event) => {
             const message = JSON.parse(event.data);
-            const root = byId.get(message.id);
-            if (!root) return;
-            if (typeof message.html === 'string') patchChildren(root, message.html);
-            root.toggleAttribute('data-live-error', message.error === true);
+            const el = document.querySelector(`[data-live-id="${CSS.escape(message.id)}"]`);
+            if (!el) return;
+            if (typeof message.html === 'string') patchChildren(el, message.html);
+            el.toggleAttribute('data-live-error', message.error === true);
         };
         socket.onclose = () => {
             document.documentElement.setAttribute('data-live-offline', '');

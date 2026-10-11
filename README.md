@@ -48,17 +48,40 @@ Composer `classmap` (see the demo). The template path is relative to the compone
    the connection is refused unless its `Origin` is this site.
 3. The server creates every component again with the same inputs (a "circuit" per tab) and keeps it in memory
    until the tab closes.
-4. `data-on-click="method"` (with an optional `data-arg`), `data-on-input` (the field's value, debounced),
+4. Children placed by templates get IDs from the server (`c0.1`), so events reach the right instance.
+5. `data-on-click="method"` (with an optional `data-arg`), `data-on-input` (the field's value, debounced),
    `data-on-change` (value, or `checked` for a checkbox) and `data-on-submit` (the form as an object) call the
    component's method. After each call the template renders again, and the client patches the new HTML in
    place. The focused field keeps what is being typed.
-5. `#[Every(1.0)]` on a method runs it on a timer and pushes a render. Timers stop when the tab closes.
+6. `#[Every(1.0)]` on a method runs it on a timer and pushes a render. Timers stop when the tab closes.
 
 ## Templates
 
 A template is a PHP file rendered with `$this` as the component, private properties included. `{$expr}` in
 the HTML is HTML-escaped; `<?php foreach (...): ?>` and `<?php if (...): ?>` work as in any view; `<?= ?>`
 stays raw for HTML you built yourself. Templates are compiled once when the plugin starts.
+
+## Nested components
+
+A template places other components by their tag:
+
+```php
+<!-- CitySearch.Template.php -->
+<?php foreach ($this->cities as $city): ?>
+    <app-city-row key="{$city}" city="{$city}" selected="{$city === $this->selected}" pick="{$this->select(...)}"></app-city-row>
+<?php endforeach ?>
+```
+
+- Attributes set the child's `#[Input]` properties. A value that is a single `{$expr}` passes the value itself
+  (a bool, an object, a closure); anything else passes a string.
+- A child keeps its state as long as the parent's template keeps placing it: by `key`, or without one by its
+  position among the tags of that selector. A child that is no longer placed is removed, its timers stop.
+- On a parent render only inputs whose value changed are set again, as in Angular: the child keeps what it
+  changed itself.
+- Events go up through a closure input: the child calls `($this->pick)($this->city)`, the parent's method runs.
+  That method doesn't need to be in the parent's template, so the browser can't call it directly.
+- Every change renders the whole top-level component again, children included. Views place top-level
+  components with `$this->live()`; tags work inside component templates.
 
 ## Security
 
@@ -75,8 +98,10 @@ stays raw for HTML you built yourself. Templates are compiled once when the plug
 
 - One reconnect strategy: a new connection starts the components again from the page's inputs.
 - The DOM patch works by position, without keys: reordered lists rewrite their rows.
-- No nested components (a selector tag inside a template is not expanded yet), at most 50 per tab, no
-  per-circuit services yet.
+- Every change renders the whole top-level component; fine for small trees, not for a page-sized one.
+- Tags inside a template need a single line of attributes in double quotes, an empty body (no content
+  projection) and `{$...}` instead of `<?= ?>` in their values. Waypoint views use `$this->live()`, not tags.
+- At most 50 top-level components per tab, no per-circuit services yet.
 - A component's injected services must be reachable from a controller (or need no constructor arguments).
 
 ## Demo

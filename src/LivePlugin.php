@@ -25,16 +25,20 @@ final class LivePlugin extends PluginBase implements ViewHelper, ClientAsset
     /** @param list<class-string> $components */
     public function __construct(array $components)
     {
+        $templates = [];
         foreach ($components as $class) {
             $reflection = new ReflectionClass($class);
             $attribute = ($reflection->getAttributes(Component::class)[0] ?? null)?->newInstance()
                 ?? throw new InvalidArgumentException("$class has no #[Component] attribute");
             // A custom element name: it becomes the tag around the component in the page
-            if (preg_match('/^[a-z][a-z0-9]*(-[a-z0-9]+)+$/', $attribute->selector) !== 1 || isset($this->components[$attribute->selector])) {
+            if (preg_match('/^[a-z][a-z0-9]*(-[a-z0-9]+)+$/', $attribute->selector) !== 1 || isset($templates[$attribute->selector])) {
                 throw new InvalidArgumentException("$class: selector '{$attribute->selector}' must be unique, lowercase and contain a dash");
             }
-            $template = new Template(dirname((string) $reflection->getFileName()) . '/' . $attribute->template);
-            $this->components[$attribute->selector] = [$class, $template];
+            $templates[$attribute->selector] = [$class, dirname((string) $reflection->getFileName()) . '/' . $attribute->template];
+        }
+        // Compiled once every selector is known: each template expands the others' tags
+        foreach ($templates as $selector => [$class, $path]) {
+            $this->components[$selector] = [$class, new Template($path, array_keys($templates))];
         }
     }
 
@@ -81,6 +85,17 @@ final class LivePlugin extends PluginBase implements ViewHelper, ClientAsset
         $component = new $class();
         // ponytail: services the component injects must be reachable from a controller or need no constructor arguments
         (new PropertyInjector($this->container))->injectReflected($component);
+        $this->setInputs($component, $selector, $inputs);
+        return [$component, $template];
+    }
+
+    /**
+     * Sets #[Input] properties; any other name is refused.
+     *
+     * @param array<array-key, mixed> $inputs
+     */
+    public function setInputs(object $component, string $selector, array $inputs): void
+    {
         $reflection = new ReflectionObject($component);
         foreach ($inputs as $name => $value) {
             $property = $reflection->hasProperty((string) $name) ? $reflection->getProperty((string) $name) : null;
@@ -89,18 +104,11 @@ final class LivePlugin extends PluginBase implements ViewHelper, ClientAsset
             }
             $property->setValue($component, $value);
         }
-        return [$component, $template];
     }
 
     /** @param array<string, mixed> $inputs */
     private function renderInPage(string $selector, array $inputs = []): string
     {
-        [$component, $template] = $this->create($selector, $inputs);
-        return sprintf(
-            '<%1$s data-live data-inputs="%2$s">%3$s</%1$s>',
-            $selector,
-            htmlspecialchars(json_encode((object) $inputs, JSON_THROW_ON_ERROR), ENT_QUOTES),
-            $template->render($component),
-        );
+        return Circuit::page($this, $selector, $inputs);
     }
 }

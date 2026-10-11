@@ -7,7 +7,7 @@ use PHPUnit\Framework\TestCase;
 use Throwable;
 use Waypoint\Container;
 use Waypoint\Live\{Circuit, LivePlugin};
-use Waypoint\Live\Tests\Fixtures\Counter;
+use Waypoint\Live\Tests\Fixtures\{Counter, Item, ItemList};
 
 final class CircuitTest extends TestCase
 {
@@ -22,10 +22,8 @@ final class CircuitTest extends TestCase
 
     private function circuit(): Circuit
     {
-        $live = new LivePlugin([Counter::class]);
-        $live->boot(new Container());
         return new Circuit(
-            $live->create(...),
+            $this->plugin(),
             function (string $message): void {
                 $this->sent[] = json_decode($message, true);
             },
@@ -40,6 +38,13 @@ final class CircuitTest extends TestCase
                 };
             },
         );
+    }
+
+    private function plugin(): LivePlugin
+    {
+        $live = new LivePlugin([Counter::class, ItemList::class, Item::class]);
+        $live->boot(new Container());
+        return $live;
     }
 
     private function message(array $message): string
@@ -112,5 +117,45 @@ final class CircuitTest extends TestCase
 
         $circuit->close();
         $this->assertTrue($this->timers[0][2]);
+    }
+
+    public function testChildrenGetIdsKeepTheirStateAndCallBackIntoTheParent(): void
+    {
+        $circuit = $this->circuit();
+        $circuit->handle($this->message(['t' => 'mount', 'id' => 'c0', 'c' => 'test-list', 'p' => []]));
+        $this->assertSame(
+            "<test-item data-live data-live-id=\"c0.0\"><button data-on-click=\"choose\">a 0</button>\n</test-item>\n"
+            . "<test-item data-live data-live-id=\"c0.1\"><button data-on-click=\"choose\">b 0</button>\n</test-item>\n"
+            . "<p>picked </p>\n<button data-on-click=\"drop\">drop</button>\n",
+            $this->sent[0]['html'],
+        );
+        $this->assertCount(2, $this->timers);
+
+        // The child's click calls the parent back: the whole top-level component renders again
+        $circuit->handle($this->message(['t' => 'call', 'id' => 'c0.1', 'm' => 'choose', 'a' => []]));
+        $this->assertSame('c0', $this->sent[1]['id']);
+        $this->assertStringContainsString('b 1</button>', $this->sent[1]['html']);
+        $this->assertStringContainsString('<p>picked b</p>', $this->sent[1]['html']);
+
+        // The parent drops "a": "b" keeps its ID and its state, "a" is gone with its timer
+        $circuit->handle($this->message(['t' => 'call', 'id' => 'c0', 'm' => 'drop', 'a' => []]));
+        $this->assertStringStartsWith('<test-item data-live data-live-id="c0.1"><button data-on-click="choose">b 1</button>', $this->sent[2]['html']);
+        $this->assertStringNotContainsString('c0.0', $this->sent[2]['html']);
+        $this->assertTrue($this->timers[0][2]);
+        $this->assertFalse($this->timers[1][2]);
+
+        $this->sent = [];
+        $circuit->handle($this->message(['t' => 'call', 'id' => 'c0.0', 'm' => 'choose', 'a' => []]));
+        $circuit->handle($this->message(['t' => 'call', 'id' => 'c0', 'm' => 'pick', 'a' => ['x']]));
+        $circuit->handle($this->message(['t' => 'mount', 'id' => 'c0.5', 'c' => 'test-item', 'p' => []]));
+        $this->assertSame([['id' => 'c0.0', 'error' => true], ['id' => 'c0', 'error' => true], ['id' => 'c0.5', 'error' => true]], $this->sent);
+    }
+
+    public function testThePageRendersChildrenWithRelativeIds(): void
+    {
+        $html = Circuit::page($this->plugin(), 'test-list', []);
+
+        $this->assertStringStartsWith('<test-list data-live data-inputs="{}"><test-item data-live data-live-id=".0">', $html);
+        $this->assertStringContainsString('data-live-id=".1"', $html);
     }
 }

@@ -4,39 +4,60 @@ namespace Waypoint\Live;
 
 use Closure;
 use InvalidArgumentException;
+use LogicException;
 use ReflectionMethod;
 use ReflectionObject;
 use Throwable;
 
 /**
  * One browser tab's components on the server, for as long as its WebSocket is open. Messages from the browser
- * (JSON): `{"t":"mount","id":"c0","c":"app-counter","p":{...}}` creates a component with its inputs,
- * `{"t":"call","id":"c0","m":"increment","a":[...]}` calls a method its template wires up. Every change goes
- * back as `{"id","html"}`, a failure as `{"id","error":true}` without details; the circuit keeps running.
+ * (JSON): `{"t":"mount","id":"c0","c":"app-counter","p":{...}}` creates a top-level component with its inputs,
+ * `{"t":"call","id":"c0.1","m":"increment","a":[...]}` calls a method its template wires up, on a top-level
+ * component or a child. A change renders the whole top-level component again and goes back as `{"id","html"}`;
+ * a failure as `{"id","error":true}` without details. The circuit keeps running either way.
  */
 final class Circuit
 {
     // ponytail: fixed limit per tab, an option once an app needs more
     private const MAX_COMPONENTS = 50;
 
-    /** @var array<string, array{object, Template}> */
-    private array $components = [];
+    /** @var array<string, Node> Every component by ID, children included. */
+    private array $nodes = [];
 
-    /** @var array<string, list<Closure(): void>> Each component's timers, as functions that cancel them. */
-    private array $timers = [];
+    private int $roots = 0;
 
     /** @var Closure(float, Closure(): void): (Closure(): void) */
     private Closure $every;
 
     /**
-     * @param Closure(string, array<string, mixed>): array{object, Template} $create Creates a listed component with its inputs set.
      * @param Closure(string): void $send Writes one message to the browser.
      * @param Closure(Throwable): void $report Logs a failure.
      * @param (Closure(float, Closure(): void): (Closure(): void))|null $every Starts a timer and returns its cancel; Tenma's setInterval by default.
      */
-    public function __construct(private Closure $create, private Closure $send, private Closure $report, ?Closure $every = null)
+    public function __construct(private LivePlugin $live, private Closure $send, private Closure $report, ?Closure $every = null)
     {
         $this->every = $every ?? static fn (float $seconds, Closure $work): Closure => \Tenma::setInterval($work, $seconds)->cancel(...);
+    }
+
+    /**
+     * The page's render of a top-level component, children included, before any circuit exists. The children's
+     * IDs are relative (".0"): the browser puts the top-level ID it picks in front.
+     *
+     * @param array<string, mixed> $inputs
+     */
+    public static function page(LivePlugin $live, string $selector, array $inputs): string
+    {
+        $circuit = new self($live, static function (): void {
+        }, static function (): void {
+        }, static fn (): Closure => static function (): void {
+        });
+        [$component, $template] = $live->create($selector, $inputs);
+        return sprintf(
+            '<%1$s data-live data-inputs="%2$s">%3$s</%1$s>',
+            $selector,
+            htmlspecialchars(json_encode((object) $inputs, JSON_THROW_ON_ERROR), ENT_QUOTES),
+            $circuit->html($circuit->node('', $selector, $component, $template, null)),
+        );
     }
 
     public function handle(string $message): void
@@ -61,60 +82,120 @@ final class Circuit
     /** The browser left: every timer stops. */
     public function close(): void
     {
-        foreach ($this->timers as $cancels) {
-            foreach ($cancels as $cancel) {
+        foreach ($this->nodes as $node) {
+            foreach ($node->timers as $cancel) {
                 $cancel();
             }
         }
-        $this->timers = [];
-        $this->components = [];
+        $this->nodes = [];
+        $this->roots = 0;
     }
 
     private function mount(string $id, mixed $selector, mixed $inputs): void
     {
-        if (isset($this->components[$id]) || count($this->components) >= self::MAX_COMPONENTS) {
+        // A dot belongs to the IDs of children, which the server numbers itself
+        if ($id === '' || str_contains($id, '.') || isset($this->nodes[$id]) || $this->roots >= self::MAX_COMPONENTS) {
             throw new InvalidArgumentException("Cannot mount component '$id'");
         }
         if (!is_string($selector) || !is_array($inputs) || ($inputs !== [] && array_is_list($inputs))) {
             throw new InvalidArgumentException('mount needs a selector and inputs as an object');
         }
-        /** @var array<string, mixed> $inputs */
-        [$component] = $this->components[$id] = ($this->create)($selector, $inputs);
-        $this->render($id);
+        [$component, $template] = $this->live->create($selector, $inputs);
+        $this->roots++;
+        $this->render($this->node($id, $selector, $component, $template, null));
+    }
+
+    private function call(string $id, mixed $method, mixed $args): void
+    {
+        $node = $this->nodes[$id] ?? throw new InvalidArgumentException("No component '$id'");
+        // Only what the template wires up: a public method elsewhere in the class stays out of reach
+        if (!is_string($method) || !in_array($method, $node->template->actions, true) || !is_array($args) || !array_is_list($args)) {
+            throw new InvalidArgumentException('call needs a method the template names and a list of arguments');
+        }
+        $reflection = new ReflectionMethod($node->component, $method);
+        if (!$reflection->isPublic() || $reflection->isStatic()) {
+            throw new InvalidArgumentException("'$method' is not a public method");
+        }
+        $reflection->invokeArgs($node->component, $args);
+        $this->render($node->root ?? $node);
+    }
+
+    private function node(string $id, string $selector, object $component, Template $template, ?Node $root): Node
+    {
+        $node = $this->nodes[$id] = new Node($id, $selector, $component, $template, $root);
         foreach ((new ReflectionObject($component))->getMethods() as $method) {
             foreach ($method->getAttributes(Every::class) as $attribute) {
-                $this->timers[$id][] = ($this->every)($attribute->newInstance()->seconds, function () use ($id, $component, $method): void {
+                $node->timers[] = ($this->every)($attribute->newInstance()->seconds, function () use ($node, $method): void {
                     try {
-                        $method->invoke($component);
-                        $this->render($id);
+                        $method->invoke($node->component);
+                        $this->render($node->root ?? $node);
                     } catch (Throwable $e) {
                         ($this->report)($e);
                     }
                 });
             }
         }
+        return $node;
     }
 
-    private function call(string $id, mixed $method, mixed $args): void
+    /**
+     * ponytail: every change renders the whole top-level component, so a child calling back into its parent
+     * needs no bookkeeping; render only the changed subtree once trees get big
+     */
+    private function render(Node $node): void
     {
-        [$component, $template] = $this->components[$id] ?? throw new InvalidArgumentException("No component '$id'");
-        // Only what the template wires up: a public method elsewhere in the class stays out of reach
-        if (!is_string($method) || !in_array($method, $template->actions, true) || !is_array($args) || !array_is_list($args)) {
-            throw new InvalidArgumentException('call needs a method the template names and a list of arguments');
+        if (isset($this->nodes[$node->id])) {
+            ($this->send)(json_encode(['id' => $node->id, 'html' => $this->html($node)], JSON_THROW_ON_ERROR));
         }
-        $reflection = new ReflectionMethod($component, $method);
-        if (!$reflection->isPublic() || $reflection->isStatic()) {
-            throw new InvalidArgumentException("'$method' is not a public method");
-        }
-        $reflection->invokeArgs($component, $args);
-        $this->render($id);
     }
 
-    private function render(string $id): void
+    /** The node's template, with its children's tags rendered; children no longer placed are removed. */
+    private function html(Node $node): string
     {
-        [$component, $template] = $this->components[$id] ?? [null, null];
-        if ($component !== null && $template !== null) {
-            ($this->send)(json_encode(['id' => $id, 'html' => $template->render($component)], JSON_THROW_ON_ERROR));
+        $positions = [];
+        $placed = [];
+        $html = $node->template->render($node->component, function (string $selector, array $inputs) use ($node, &$positions, &$placed): string {
+            $key = $inputs['key'] ?? null;
+            unset($inputs['key']);
+            if ($key !== null && !is_scalar($key)) {
+                throw new LogicException("The key of <$selector> must be a scalar");
+            }
+            // Identity across renders: the key if there is one, otherwise the position among its siblings of that tag
+            $key = $selector . ($key !== null ? '=' . $key : '#' . ($positions[$selector] = ($positions[$selector] ?? 0) + 1));
+            if (isset($placed[$key])) {
+                throw new LogicException("Two <$selector> children with the same key in one template");
+            }
+            $placed[$key] = true;
+            $child = $node->children[$key] ?? null;
+            if ($child === null) {
+                [$component, $template] = $this->live->create($selector, $inputs);
+                $child = $node->children[$key] = $this->node($node->id . '.' . $node->next++, $selector, $component, $template, $node->root ?? $node);
+            } else {
+                // As in Angular: only inputs whose value changed are set again, the child keeps what it changed itself
+                $this->live->setInputs($child->component, $selector, array_filter(
+                    $inputs,
+                    static fn (mixed $value, string|int $name) => !array_key_exists($name, $child->inputs) || $child->inputs[$name] !== $value,
+                    ARRAY_FILTER_USE_BOTH,
+                ));
+            }
+            $child->inputs = $inputs;
+            return sprintf('<%1$s data-live data-live-id="%2$s">%3$s</%1$s>', $selector, htmlspecialchars($child->id, ENT_QUOTES), $this->html($child));
+        });
+        foreach (array_diff_key($node->children, $placed) as $key => $gone) {
+            $this->remove($gone);
+            unset($node->children[$key]);
         }
+        return $html;
+    }
+
+    private function remove(Node $node): void
+    {
+        foreach ($node->children as $child) {
+            $this->remove($child);
+        }
+        foreach ($node->timers as $cancel) {
+            $cancel();
+        }
+        unset($this->nodes[$node->id]);
     }
 }

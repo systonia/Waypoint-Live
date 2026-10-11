@@ -32,7 +32,7 @@ final class LiveController
         $logger = $this->logger;
         $res->upgrade(\Tenma\Http\Response::websocket(static function (\Tenma\Http\WebSocket $socket) use ($live, $logger): void {
             $circuit = new Circuit(
-                $live->create(...),
+                $live,
                 static function (string $message) use ($socket): void {
                     try {
                         $socket->send($message);

@@ -2,6 +2,6 @@
 <p><?= $this->selected === null ? 'Nichts ausgewählt' : 'Ausgewählt: ' . htmlspecialchars($this->selected) ?></p>
 <ul>
 <?php foreach ($this->cities->search($this->query) as $city): ?>
-    <li><button data-on-click="select" data-arg="{$city}"<?= $city === $this->selected ? ' aria-current="true"' : '' ?>>{$city}</button></li>
+    <app-city-row key="{$city}" city="{$city}" selected="{$city === $this->selected}" pick="{$this->select(...)}"></app-city-row>
 <?php endforeach ?>
 </ul>

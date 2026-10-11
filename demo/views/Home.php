@@ -1,9 +1,14 @@
 <h1>Waypoint Live</h1>
-<p>Drei PHP-Komponenten, eine WebSocket-Verbindung, kein eigenes JavaScript.</p>
+<p>PHP-Komponenten, eine WebSocket-Verbindung, kein eigenes JavaScript.</p>
 
 <section>
     <h2>Zähler</h2>
     <?= $this->live('app-counter', ['count' => 3]) ?>
+</section>
+
+<section>
+    <h2>Verschachtelt</h2>
+    <?= $this->live('app-counter-list') ?>
 </section>
 
 <section>

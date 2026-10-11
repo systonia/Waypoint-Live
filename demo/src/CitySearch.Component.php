@@ -22,6 +22,7 @@ final class CitySearch
         $this->query = $query;
     }
 
+    /** Called back by the rows; not in the template, so the browser cannot call it directly. */
     public function select(string $city): void
     {
         $this->selected = $city;
