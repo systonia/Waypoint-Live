@@ -3,6 +3,7 @@
 <body>
 <app-a data-live data-inputs="{}"><input id="f"><button id="btn" data-on-click="go">go</button><input id="typed" data-on-input="search"></app-a>
 <app-b data-live data-inputs="{}"><form><input id="fa" name="a"><input id="fb" name="b"></form><input id="bound" value="ab"><textarea id="ta">x</textarea><select id="sel"><option>1</option><option selected>2</option></select></app-b>
+<app-c data-live data-inputs="{}"><form id="up" data-on-submit="save"><input name="title" value="Trip"><input id="ph" type="file" name="photos[]" multiple><input type="file" name="empty"></form><input id="one" type="file" data-on-change="pick"></app-c>
 <pre id="out"></pre>
 <script>
 const sent = []; let ws;
@@ -20,7 +21,7 @@ const $ = (id) => document.getElementById(id);
   // Offline click, then a new circuit: the click is dropped
   $('btn').click();
   server({ t: 'circuit', token: 't1', resumed: false });
-  check('queue dropped on new circuit', sent.filter((m) => m.t === 'call').length === 0 && sent.filter((m) => m.t === 'mount').length === 2);
+  check('queue dropped on new circuit', sent.filter((m) => m.t === 'call').length === 0 && sent.filter((m) => m.t === 'mount').length === 3);
   // Resumed circuit keeps the queue
   sent.length = 0; ws.onclose(); $('btn').click(); ws.onopen();
   server({ t: 'circuit', token: 't1', resumed: true });
@@ -52,6 +53,23 @@ const $ = (id) => document.getElementById(id);
   server({ id: 'c1', html: b + '<input id="bound" value=""><textarea id="ta"></textarea><select id="sel"><option>1</option><option selected>2</option></select>' });
   check('textarea takes server value', $('ta').value === '');
   check('select takes server value', $('sel').value === '2');
+  // Files go along base64-encoded: a form's list field, and a file input's change
+  sent.length = 0;
+  const photos = new DataTransfer();
+  photos.items.add(new File(['hi'], 'a.txt', { type: 'text/plain' }));
+  photos.items.add(new File(['yo'], 'b.txt'));
+  $('ph').files = photos.files;
+  $('up').requestSubmit();
+  await new Promise((r) => setTimeout(r, 100));
+  const save = sent.find((m) => m.m === 'save')?.a[0];
+  check('form sends its files', save?.title === 'Trip' && save.photos.length === 2 && save.photos[0].$file.name === 'a.txt' && save.photos[0].$file.data === btoa('hi') && !('empty' in save));
+  const one = new DataTransfer();
+  one.items.add(new File(['x'], 'one.png', { type: 'image/png' }));
+  $('one').files = one.files;
+  $('one').dispatchEvent(new Event('change', { bubbles: true }));
+  await new Promise((r) => setTimeout(r, 100));
+  const pick = sent.find((m) => m.m === 'pick')?.a[0];
+  check('file input sends its file', pick?.$file.name === 'one.png' && pick.$file.type === 'image/png' && pick.$file.data === btoa('x'));
   $('out').textContent = results.join('\n');
 })();
 </script>

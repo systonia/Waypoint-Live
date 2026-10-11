@@ -51,7 +51,8 @@ Composer `classmap` (see the demo). The template path is relative to the compone
    until the tab closes; after a dropped connection a while longer (see Reconnect).
 4. Children placed by templates get IDs from the server (`c0.1`), so events reach the right instance.
 5. `data-on-click="method"` (with an optional `data-arg`), `data-on-input` (the field's value, debounced),
-   `data-on-change` (value, or `checked` for a checkbox) and `data-on-submit` (the form as an object) call the
+   `data-on-change` (value, `checked` for a checkbox, the file for a file input) and `data-on-submit` (the form
+   as an object, files included) call the
    component's method. After each call the template renders again, and the client patches the new HTML in
    place. The focused field keeps what is being typed.
 6. `#[Every(1.0)]` on a method runs it on a timer and pushes a render. Timers stop when the tab closes.
@@ -126,6 +127,39 @@ leaves the input alone. A form field keeps what the user typed or picked until t
 value for it; while it has the focus, only if the server already had what is in it, so a render that lags
 behind the typing loses nothing. Typing is sent after 150 ms, or right before any other event.
 
+## Uploads
+
+A file input or a form sends its files along; the method gets a `Waypoint\Http\UploadedFile`, the same class
+a controller gets from `$req->file()`:
+
+```php
+<input type="file" accept="image/*" data-on-change="pick">
+
+<form data-on-submit="save">
+    <input name="title">
+    <input type="file" name="photos[]" multiple>
+    <button>Save</button>
+</form>
+```
+
+```php
+public function pick(?UploadedFile $file): void              // null when the selection was cleared
+{
+    $this->preview = $file?->name;
+}
+
+/** @param array{title: string, photos?: list<UploadedFile>} $form */
+public function save(array $form): void
+{
+    foreach ($form['photos'] ?? [] as $photo) {
+        $photo->moveTo($this->media->pathFor($photo));     // under Tenma without blocking the worker
+    }
+}
+```
+
+Name and type come from the browser, as with any upload: never use the name as a path, and check the content
+before trusting the type. An empty file input is left out of the form; `multiple` gives a list.
+
 ## Reconnect
 
 When the connection drops, the server keeps the tab's circuit for 3 minutes (at most 100 per worker, the
@@ -167,8 +201,10 @@ components while they are parked. It is never in a URL, a cookie or storage.
 - The server keeps a circuit only once it notices that the old connection is dead. A browser that notices
   first (a network switch) may reconnect before that and start over.
 - A `//` comment inside `<?= ?>` breaks the template; use `/* */`.
-- `data-on-submit` sends the form as an object: a repeated name (checkbox group, `select multiple`) keeps its
-  last value, files are not sent.
+- `data-on-submit` sends the form as an object: `name[]` collects a list, any other repeated name (checkbox
+  group, `select multiple`) keeps its last value.
+- A file travels base64-encoded inside one WebSocket message: a third bigger than the file, at most
+  `--max-body` (10 MB by default) per message.
 - An event sent while the connection is dying unnoticed (no ping yet) is lost.
 
 ## Demo

@@ -89,13 +89,38 @@
         }, 150));
     });
 
-    Waypoint.directive('data-on-change', 'change', (el) => {
+    // A file goes along base64-encoded; the server hands the method an UploadedFile
+    const encode = (file) => new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve({ $file: { name: file.name, type: file.type, data: reader.result.slice(reader.result.indexOf(',') + 1) } });
+        reader.onerror = () => reject(reader.error);
+        reader.readAsDataURL(file);
+    });
+
+    // A form as an object: "photos[]" collects a list, an empty file input is left out
+    const formObject = async (form) => {
+        const object = {};
+        for (const [name, value] of new FormData(form)) {
+            if (value instanceof File && value.name === '' && value.size === 0) continue;
+            const entry = value instanceof File ? await encode(value) : value;
+            if (name.endsWith('[]')) (object[name.slice(0, -2)] ??= []).push(entry);
+            else object[name] = entry;
+        }
+        return object;
+    };
+
+    Waypoint.directive('data-on-change', 'change', async (el) => {
+        if (el.type === 'file') {
+            const files = await Promise.all([...el.files].map(encode));
+            call(el, 'data-on-change', [el.multiple ? files : files[0] ?? null]);
+            return;
+        }
         call(el, 'data-on-change', [el.type === 'checkbox' ? el.checked : el.value]);
     });
 
-    Waypoint.directive('data-on-submit', 'submit', (el, event) => {
+    Waypoint.directive('data-on-submit', 'submit', async (el, event) => {
         event.preventDefault();
-        call(el, 'data-on-submit', [Object.fromEntries(new FormData(el))]);
+        call(el, 'data-on-submit', [await formObject(el)]);
     });
 
     const patchChildren = (target, html) => {

@@ -8,7 +8,7 @@ use Throwable;
 use Waypoint\Container;
 use Waypoint\Http\{Request, Response};
 use Waypoint\Live\{Circuit, LivePlugin};
-use Waypoint\Live\Tests\Fixtures\{BasketBadge, BasketButton, Counter, Fragile, Item, ItemList, Label};
+use Waypoint\Live\Tests\Fixtures\{BasketBadge, BasketButton, Counter, Fragile, Item, ItemList, Label, Uploader};
 
 final class CircuitTest extends TestCase
 {
@@ -43,7 +43,7 @@ final class CircuitTest extends TestCase
 
     private function plugin(): LivePlugin
     {
-        $live = new LivePlugin([Counter::class, ItemList::class, Item::class, BasketButton::class, BasketBadge::class, Fragile::class]);
+        $live = new LivePlugin([Counter::class, ItemList::class, Item::class, BasketButton::class, BasketBadge::class, Fragile::class, Uploader::class]);
         $container = new Container();
         $container->set(new Label('fine'));
         $live->boot($container);
@@ -243,5 +243,21 @@ final class CircuitTest extends TestCase
         $this->sent = [];
         $other->handle($this->message(['t' => 'call', 'id' => 'c0', 'm' => 'add', 'a' => []]));
         $this->assertSame([['id' => 'c1', 'html' => "<output>1</output>\n"]], $this->sent);
+    }
+
+    public function testFilesFromTheBrowserArriveAsUploadedFiles(): void
+    {
+        $circuit = $this->circuit();
+        $circuit->handle($this->message(['t' => 'mount', 'id' => 'c0', 'c' => 'test-uploader', 'p' => []]));
+        $file = static fn (string $name, string $content) => ['$file' => ['name' => $name, 'type' => 'text/plain', 'data' => base64_encode($content)]];
+
+        $circuit->handle($this->message(['t' => 'call', 'id' => 'c0', 'm' => 'pick', 'a' => [$file('../../etc/a.txt', 'hello')]]));
+        $this->assertStringContainsString('<p>a.txt text/plain 5 hello</p>', $this->sent[1]['html']);
+
+        $circuit->handle($this->message(['t' => 'call', 'id' => 'c0', 'm' => 'save', 'a' => [['title' => 'Trip', 'photos' => [$file('x.jpg', 'x'), $file('y.jpg', '')]]]]));
+        $this->assertStringContainsString('<p>Trip: x.jpg, y.jpg</p>', $this->sent[2]['html']);
+
+        $circuit->handle($this->message(['t' => 'call', 'id' => 'c0', 'm' => 'pick', 'a' => [['$file' => ['name' => 'a', 'data' => '***']]]]));
+        $this->assertSame(['id' => 'c0', 'error' => true], $this->sent[3]);
     }
 }

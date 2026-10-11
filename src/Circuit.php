@@ -8,6 +8,7 @@ use LogicException;
 use ReflectionMethod;
 use ReflectionObject;
 use Throwable;
+use Waypoint\Http\UploadedFile;
 
 /**
  * One browser tab's components on the server, for as long as its WebSocket is open. Messages from the browser
@@ -159,11 +160,45 @@ final class Circuit
             throw new InvalidArgumentException("'$method' is not a public method");
         }
         try {
-            $reflection->invokeArgs($node->component, $args);
+            $reflection->invokeArgs($node->component, array_map(self::files(...), $args));
         } finally {
             // A method that throws may have changed something before
             $this->changed();
         }
+    }
+
+    /**
+     * A file from the browser comes as {"$file": {"name", "type", "data"}}, its content base64-encoded; the method
+     * gets it as an UploadedFile. Everything else stays as it came.
+     */
+    private static function files(mixed $value): mixed
+    {
+        if (!is_array($value)) {
+            return $value;
+        }
+        $file = $value['$file'] ?? null;
+        if (count($value) !== 1 || !is_array($file)) {
+            return array_map(self::files(...), $value);
+        }
+        $data = base64_decode(is_string($file['data'] ?? null) ? $file['data'] : '', true);
+        if ($data === false) {
+            throw new InvalidArgumentException('A file needs its content base64-encoded');
+        }
+        $name = basename(str_replace('\\', '/', is_string($file['name'] ?? null) ? $file['name'] : ''));
+        return new UploadedFile(
+            $name,
+            is_string($file['type'] ?? null) ? $file['type'] : '',
+            strlen($data),
+            static fn (): string => $data,
+            static function (string $path) use ($data): void {
+                // Under Tenma without blocking the worker
+                if (class_exists(\Tenma\Fs::class, false)) {
+                    \Tenma\Fs::writeFile($path, $data);
+                } elseif (file_put_contents($path, $data) === false) {
+                    throw new \RuntimeException("Could not write the upload to '$path'");
+                }
+            },
+        );
     }
 
     private function node(string $id, string $selector, object $component, Template $template, ?Node $root): Node
