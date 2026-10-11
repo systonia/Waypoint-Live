@@ -79,12 +79,12 @@ final class LivePlugin extends PluginBase implements ViewHelper, ClientAsset
      * @param array<array-key, mixed> $inputs
      * @return array{object, Template}
      */
-    public function create(string $selector, array $inputs): array
+    public function create(string $selector, array $inputs, Scope $services): array
     {
         [$class, $template] = $this->components[$selector] ?? throw new InvalidArgumentException("'$selector' is not a live component of this app");
         $component = new $class();
         // ponytail: services the component injects must be reachable from a controller or need no constructor arguments
-        (new PropertyInjector($this->container))->injectReflected($component);
+        (new PropertyInjector($services))->injectReflected($component);
         $this->setInputs($component, $selector, $inputs);
         return [$component, $template];
     }
@@ -104,6 +104,12 @@ final class LivePlugin extends PluginBase implements ViewHelper, ClientAsset
             }
             $property->setValue($component, $value);
         }
+    }
+
+    /** A new circuit's services: its own #[Scoped] ones, the app's for the rest. */
+    public function scope(): Scope
+    {
+        return new Scope($this->container);
     }
 
     /** @param array<string, mixed> $inputs */

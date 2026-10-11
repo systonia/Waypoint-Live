@@ -16,7 +16,10 @@ final class Node
     /** @var list<Closure(): void> Functions that cancel this component's timers. */
     public array $timers = [];
 
-    /** Numbers the children: their ID is this one's plus ".n". */
+    /** A top-level component's last render sent to the browser. */
+    public ?string $sent = null;
+
+        /** Numbers the children: their ID is this one's plus ".n". */
     public int $next = 0;
 
     public function __construct(

@@ -86,8 +86,28 @@ A template places other components by their tag:
   changed itself.
 - Events go up through a closure input: the child calls `($this->pick)($this->city)`, the parent's method runs.
   That method doesn't need to be in the parent's template, so the browser can't call it directly.
-- Every change renders the whole top-level component again, children included. Views place top-level
+- Every change renders the top-level components again, children included. Views place top-level
   components with `$this->live()`; tags work inside component templates.
+
+## Services per tab
+
+Services come in through `#[Inject]` as in a controller: one instance for the whole app. `#[Scoped]` on a
+service class makes it one instance per circuit, that is per browser tab, like a scoped service in Blazor
+Server:
+
+```php
+#[Scoped]
+final class Cart
+{
+    public array $items = [];
+}
+```
+
+Every component of the tab that injects `Cart` gets the same instance, children and other top-level components
+included; another tab gets its own. It lives as long as the circuit, reconnects included. A scoped service needs
+a constructor without required arguments; its own `#[Inject]` properties are set, scoped ones from the same tab.
+When an action changes it, every component of the tab that shows it renders again: after a change all
+top-level components render, and those whose HTML changed are sent.
 
 ## DOM patch
 
@@ -130,10 +150,10 @@ components while they are parked. It is never in a URL, a cookie or storage.
 
 - A circuit lives in the memory of one worker. With several workers a reconnect can land on another one and
   starts over; so does a restart or a deploy.
-- Every change renders the whole top-level component; fine for small trees, not for a page-sized one.
+- Every change renders every top-level component of the tab; fine for small pages, not for big ones.
 - Tags inside a template need attributes in double quotes and an empty body (no content projection).
   Waypoint views use `$this->live()`, not tags.
-- At most 50 top-level components per tab, no per-circuit services yet.
+- At most 50 top-level components per tab.
 - A component's injected services must be reachable from a controller (or need no constructor arguments).
 
 ## Demo

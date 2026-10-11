@@ -12,6 +12,13 @@
 </section>
 
 <section>
+    <h2>Warenkorb pro Tab</h2>
+    <p>Zwei getrennte Komponenten teilen sich einen <code>#[Scoped]</code>-Service; ein zweiter Tab hat seinen eigenen.</p>
+    <?= $this->live('app-products') ?>
+    <?= $this->live('app-cart') ?>
+</section>
+
+<section>
     <h2>Suche in <?= (int) $model['cityCount'] ?> Städten</h2>
     <?= $this->live('app-city-search') ?>
 </section>

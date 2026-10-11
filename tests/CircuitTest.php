@@ -7,7 +7,7 @@ use PHPUnit\Framework\TestCase;
 use Throwable;
 use Waypoint\Container;
 use Waypoint\Live\{Circuit, LivePlugin};
-use Waypoint\Live\Tests\Fixtures\{Counter, Item, ItemList};
+use Waypoint\Live\Tests\Fixtures\{BasketBadge, BasketButton, Counter, Item, ItemList};
 
 final class CircuitTest extends TestCase
 {
@@ -42,7 +42,7 @@ final class CircuitTest extends TestCase
 
     private function plugin(): LivePlugin
     {
-        $live = new LivePlugin([Counter::class, ItemList::class, Item::class]);
+        $live = new LivePlugin([Counter::class, ItemList::class, Item::class, BasketButton::class, BasketBadge::class]);
         $live->boot(new Container());
         return $live;
     }
@@ -180,5 +180,25 @@ final class CircuitTest extends TestCase
         $this->assertSame([['id' => 'c0', 'html' => self::html(6)]], $resent);
         $this->assertCount(2, $this->timers);
         $this->assertFalse($this->timers[1][2]);
+    }
+
+    public function testAScopedServiceIsSharedWithinACircuitAndSeparateBetweenCircuits(): void
+    {
+        $tab = $this->circuit();
+        $tab->handle($this->message(['t' => 'mount', 'id' => 'c0', 'c' => 'test-basket-button', 'p' => []]));
+        $tab->handle($this->message(['t' => 'mount', 'id' => 'c1', 'c' => 'test-basket-badge', 'p' => []]));
+        $other = $this->circuit();
+        $other->handle($this->message(['t' => 'mount', 'id' => 'c0', 'c' => 'test-basket-button', 'p' => []]));
+        $other->handle($this->message(['t' => 'mount', 'id' => 'c1', 'c' => 'test-basket-badge', 'p' => []]));
+        $this->sent = [];
+
+        // The button's own render did not change: only the other top-level component goes out
+        $tab->handle($this->message(['t' => 'call', 'id' => 'c0', 'm' => 'add', 'a' => []]));
+        $this->assertSame([['id' => 'c1', 'html' => "<output>1</output>\n"]], $this->sent);
+
+        // Another tab counts in its own basket
+        $this->sent = [];
+        $other->handle($this->message(['t' => 'call', 'id' => 'c0', 'm' => 'add', 'a' => []]));
+        $this->assertSame([['id' => 'c1', 'html' => "<output>1</output>\n"]], $this->sent);
     }
 }

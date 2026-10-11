@@ -13,7 +13,7 @@ use Throwable;
  * One browser tab's components on the server, for as long as its WebSocket is open. Messages from the browser
  * (JSON): `{"t":"mount","id":"c0","c":"app-counter","p":{...}}` creates a top-level component with its inputs,
  * `{"t":"call","id":"c0.1","m":"increment","a":[...]}` calls a method its template wires up, on a top-level
- * component or a child. A change renders the whole top-level component again and goes back as `{"id","html"}`;
+ * component or a child. After a change every top-level component renders; the changed ones go back as `{"id","html"}`;
  * a failure as `{"id","error":true}` without details. The circuit keeps running either way.
  */
 final class Circuit
@@ -29,6 +29,9 @@ final class Circuit
     /** @var Closure(float, Closure(): void): (Closure(): void) */
     private Closure $every;
 
+    /** This tab's #[Scoped] services; shared by all its components. */
+    private Scope $services;
+
     /**
      * @param Closure(string): void $send Writes one message to the browser.
      * @param Closure(Throwable): void $report Logs a failure.
@@ -36,6 +39,7 @@ final class Circuit
      */
     public function __construct(private LivePlugin $live, private Closure $send, private Closure $report, ?Closure $every = null)
     {
+        $this->services = $live->scope();
         $this->every = $every ?? static fn (float $seconds, Closure $work): Closure => \Tenma::setInterval($work, $seconds)->cancel(...);
     }
 
@@ -51,7 +55,7 @@ final class Circuit
         }, static function (): void {
         }, static fn (): Closure => static function (): void {
         });
-        [$component, $template] = $live->create($selector, $inputs);
+        [$component, $template] = $live->create($selector, $inputs, $circuit->services);
         return sprintf(
             '<%1$s data-live data-inputs="%2$s">%3$s</%1$s>',
             $selector,
@@ -111,6 +115,8 @@ final class Circuit
         $this->send = $send;
         foreach ($this->nodes as $node) {
             $this->startTimers($node);
+        }
+        foreach ($this->nodes as $node) {
             if ($node->root === null) {
                 $this->render($node);
             }
@@ -126,7 +132,7 @@ final class Circuit
         if (!is_string($selector) || !is_array($inputs) || ($inputs !== [] && array_is_list($inputs))) {
             throw new InvalidArgumentException('mount needs a selector and inputs as an object');
         }
-        [$component, $template] = $this->live->create($selector, $inputs);
+        [$component, $template] = $this->live->create($selector, $inputs, $this->services);
         $this->roots++;
         $this->render($this->node($id, $selector, $component, $template, null));
     }
@@ -143,7 +149,7 @@ final class Circuit
             throw new InvalidArgumentException("'$method' is not a public method");
         }
         $reflection->invokeArgs($node->component, $args);
-        $this->render($node->root ?? $node);
+        $this->changed();
     }
 
     private function node(string $id, string $selector, object $component, Template $template, ?Node $root): Node
@@ -160,7 +166,7 @@ final class Circuit
                 $node->timers[] = ($this->every)($attribute->newInstance()->seconds, function () use ($node, $method): void {
                     try {
                         $method->invoke($node->component);
-                        $this->render($node->root ?? $node);
+                        $this->changed();
                     } catch (Throwable $e) {
                         ($this->report)($e);
                     }
@@ -170,13 +176,30 @@ final class Circuit
     }
 
     /**
-     * ponytail: every change renders the whole top-level component, so a child calling back into its parent
-     * needs no bookkeeping; render only the changed subtree once trees get big
+     * After an action or a timer: every top-level component renders, and those whose HTML changed go to the
+     * browser. A child calling back into its parent, or a #[Scoped] service shared with another top-level
+     * component, needs no bookkeeping that way.
+     *
+     * ponytail: renders the whole tab on every change; track what each render read once tabs get big
      */
-    private function render(Node $node): void
+    private function changed(): void
     {
-        if (isset($this->nodes[$node->id])) {
-            ($this->send)(json_encode(['id' => $node->id, 'html' => $this->html($node)], JSON_THROW_ON_ERROR));
+        foreach ($this->nodes as $node) {
+            if ($node->root === null) {
+                $this->render($node, onlyIfChanged: true);
+            }
+        }
+    }
+
+    private function render(Node $node, bool $onlyIfChanged = false): void
+    {
+        if (!isset($this->nodes[$node->id])) {
+            return;
+        }
+        $html = $this->html($node);
+        if (!$onlyIfChanged || $html !== $node->sent) {
+            $node->sent = $html;
+            ($this->send)(json_encode(['id' => $node->id, 'html' => $html], JSON_THROW_ON_ERROR));
         }
     }
 
@@ -199,7 +222,7 @@ final class Circuit
             $placed[$key] = true;
             $child = $node->children[$key] ?? null;
             if ($child === null) {
-                [$component, $template] = $this->live->create($selector, $inputs);
+                [$component, $template] = $this->live->create($selector, $inputs, $this->services);
                 $child = $node->children[$key] = $this->node($node->id . '.' . $node->next++, $selector, $component, $template, $node->root ?? $node);
             } else {
                 // As in Angular: only inputs whose value changed are set again, the child keeps what it changed itself
