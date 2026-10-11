@@ -15,6 +15,13 @@ use Waypoint\Logger;
 #[Controller]
 final class LiveController
 {
+    // ponytail: fixed per worker, Blazor's defaults; options once an app needs others
+    private const PARK_SECONDS = 180.0;
+    private const MAX_PARKED = 100;
+
+    /** @var array<string, array{Circuit, \Tenma\Timer}> Circuits whose browser may come back, oldest first. */
+    private static array $parked = [];
+
     #[Inject]
     private LivePlugin $live;
 
@@ -31,25 +38,67 @@ final class LiveController
         $live = $this->live;
         $logger = $this->logger;
         $res->upgrade(\Tenma\Http\Response::websocket(static function (\Tenma\Http\WebSocket $socket) use ($live, $logger): void {
-            $circuit = new Circuit(
-                $live,
-                static function (string $message) use ($socket): void {
-                    try {
-                        $socket->send($message);
-                    } catch (\Tenma\Http\ConnectionClosed) {
-                        // A timer rendered after the browser left; the receive loop below ends the circuit
-                    }
-                },
-                static fn (Throwable $e) => $logger->error('live: ' . $e->getMessage(), ['exception' => $e]),
-            );
+            $send = static function (string $message) use ($socket): void {
+                try {
+                    $socket->send($message);
+                } catch (\Tenma\Http\ConnectionClosed) {
+                    // Rendered after the browser left; the receive loop below ends the connection
+                }
+            };
+            $circuit = null;
+            $token = '';
             try {
                 while (($message = $socket->receive()) !== null) {
-                    $circuit->handle($message);
+                    if ($circuit !== null) {
+                        $circuit->handle($message);
+                        continue;
+                    }
+                    // The first message says whether the browser had a circuit before: {"t":"hello","token":"..."|null}
+                    $hello = json_decode($message, true);
+                    $asked = is_array($hello) && is_string($hello['token'] ?? null) ? $hello['token'] : '';
+                    $circuit = self::unpark($asked);
+                    $resumed = $circuit !== null;
+                    $token = $resumed ? $asked : bin2hex(random_bytes(16));
+                    $circuit ??= new Circuit($live, $send, static fn (Throwable $e) => $logger->error('live: ' . $e->getMessage(), ['exception' => $e]));
+                    $send(json_encode(['t' => 'circuit', 'token' => $token, 'resumed' => $resumed], JSON_THROW_ON_ERROR));
+                    if ($resumed) {
+                        $circuit->reattach($send);
+                    }
                 }
             } finally {
-                $circuit->close();
+                if ($circuit !== null) {
+                    self::park($token, $circuit);
+                }
             }
         }));
+    }
+
+    /**
+     * Keeps a circuit whose connection dropped, so the browser can come back to it: like Blazor Server, for a
+     * while, then it is closed. Per worker: a browser that reconnects to another worker starts over.
+     */
+    private static function park(string $token, Circuit $circuit): void
+    {
+        $circuit->detach();
+        if (count(self::$parked) >= self::MAX_PARKED) {
+            self::unpark((string) array_key_first(self::$parked))?->close();
+        }
+        // Detached from this request: the connection is over, and Tenma ends the request's own timers with it
+        $expiry = null;
+        \Tenma::detach(static function () use ($token, &$expiry): void {
+            $expiry = \Tenma::setTimeout(static fn () => self::unpark($token)?->close(), self::PARK_SECONDS);
+        });
+        if ($expiry !== null) {
+            self::$parked[$token] = [$circuit, $expiry];
+        }
+    }
+
+    private static function unpark(string $token): ?Circuit
+    {
+        [$circuit, $expiry] = self::$parked[$token] ?? [null, null];
+        unset(self::$parked[$token]);
+        $expiry?->cancel();
+        return $circuit;
     }
 
     private static function sameOrigin(Request $req): bool

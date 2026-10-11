@@ -159,4 +159,26 @@ final class CircuitTest extends TestCase
         $this->assertStringStartsWith('<test-list data-live data-inputs="{}"><test-item data-live data-live-id=".0">', $html);
         $this->assertStringContainsString('data-live-id=".1"', $html);
     }
+
+    public function testADetachedCircuitPausesAndComesBackWithItsState(): void
+    {
+        $circuit = $this->circuit();
+        $circuit->handle($this->message(['t' => 'mount', 'id' => 'c0', 'c' => 'test-counter', 'p' => ['count' => 3]]));
+        $circuit->handle($this->message(['t' => 'call', 'id' => 'c0', 'm' => 'add', 'a' => [2]]));
+        $this->sent = [];
+
+        $circuit->detach();
+        $this->assertTrue($this->timers[0][2]);
+        $circuit->handle($this->message(['t' => 'call', 'id' => 'c0', 'm' => 'add', 'a' => [1]]));
+        $this->assertSame([], $this->sent);
+
+        // A new connection: the browser gets the current render, missed changes included, and the timer runs again
+        $resent = [];
+        $circuit->reattach(function (string $message) use (&$resent): void {
+            $resent[] = json_decode($message, true);
+        });
+        $this->assertSame([['id' => 'c0', 'html' => self::html(6)]], $resent);
+        $this->assertCount(2, $this->timers);
+        $this->assertFalse($this->timers[1][2]);
+    }
 }

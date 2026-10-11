@@ -48,7 +48,7 @@ Composer `classmap` (see the demo). The template path is relative to the compone
 2. `live.js` opens a WebSocket to `/_live`, a normal Waypoint route: the app's middlewares and guards run, and
    the connection is refused unless its `Origin` is this site.
 3. The server creates every component again with the same inputs (a "circuit" per tab) and keeps it in memory
-   until the tab closes.
+   until the tab closes; after a dropped connection a while longer (see Reconnect).
 4. Children placed by templates get IDs from the server (`c0.1`), so events reach the right instance.
 5. `data-on-click="method"` (with an optional `data-arg`), `data-on-input` (the field's value, debounced),
    `data-on-change` (value, or `checked` for a checkbox) and `data-on-submit` (the form as an object) call the
@@ -89,6 +89,17 @@ A template places other components by their tag:
 - Every change renders the whole top-level component again, children included. Views place top-level
   components with `$this->live()`; tags work inside component templates.
 
+## Reconnect
+
+When the connection drops, the server keeps the tab's circuit for 3 minutes (at most 100 per worker, the
+oldest goes first), with its timers paused. The browser reconnects every second and sends the circuit's
+token; the server hands back the same components with their state, renders them once to catch up and starts
+the timers again. Events from the time offline are queued and sent afterwards. If the circuit is gone, the
+components start again from the page's inputs. A reload is a new circuit, as in Blazor.
+
+The token lives only in the page's memory and is a bearer secret for the circuit: whoever has it gets the
+components while they are parked. It is never in a URL, a cookie or storage.
+
 ## Security
 
 - Only components listed in `LivePlugin` can be created, by selector; the browser never names a class.
@@ -102,7 +113,8 @@ A template places other components by their tag:
 
 ## Limits of the proof of concept
 
-- One reconnect strategy: a new connection starts the components again from the page's inputs.
+- A circuit lives in the memory of one worker. With several workers a reconnect can land on another one and
+  starts over; so does a restart or a deploy.
 - The DOM patch works by position, without keys: reordered lists rewrite their rows.
 - Every change renders the whole top-level component; fine for small trees, not for a page-sized one.
 - Tags inside a template need attributes in double quotes and an empty body (no content projection).

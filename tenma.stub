@@ -5,6 +5,10 @@ namespace {
     final class Tenma
     {
         public static function setInterval(callable $callback, float $seconds): \Tenma\Timer {}
+
+        public static function setTimeout(callable $callback, float $seconds): \Tenma\Timer {}
+
+        public static function detach(callable $work): \Tenma\Task {}
     }
 }
 
@@ -12,6 +16,10 @@ namespace Tenma {
     final class Timer
     {
         public function cancel(): void {}
+    }
+
+    final class Task
+    {
     }
 
     /** @template T */

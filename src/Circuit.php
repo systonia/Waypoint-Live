@@ -79,16 +79,42 @@ final class Circuit
         }
     }
 
-    /** The browser left: every timer stops. */
+    /** The browser is gone for good: every timer stops, the components are dropped. */
     public function close(): void
+    {
+        $this->detach();
+        $this->nodes = [];
+        $this->roots = 0;
+    }
+
+    /** The connection dropped, the browser may come back: timers pause, nothing is sent until reattach(). */
+    public function detach(): void
     {
         foreach ($this->nodes as $node) {
             foreach ($node->timers as $cancel) {
                 $cancel();
             }
+            $node->timers = [];
         }
-        $this->nodes = [];
-        $this->roots = 0;
+        $this->send = static function (): void {
+        };
+    }
+
+    /**
+     * The browser is back on a new connection: timers run again, and every top-level component renders, since
+     * the browser missed whatever changed in between.
+     *
+     * @param Closure(string): void $send
+     */
+    public function reattach(Closure $send): void
+    {
+        $this->send = $send;
+        foreach ($this->nodes as $node) {
+            $this->startTimers($node);
+            if ($node->root === null) {
+                $this->render($node);
+            }
+        }
     }
 
     private function mount(string $id, mixed $selector, mixed $inputs): void
@@ -123,7 +149,13 @@ final class Circuit
     private function node(string $id, string $selector, object $component, Template $template, ?Node $root): Node
     {
         $node = $this->nodes[$id] = new Node($id, $selector, $component, $template, $root);
-        foreach ((new ReflectionObject($component))->getMethods() as $method) {
+        $this->startTimers($node);
+        return $node;
+    }
+
+    private function startTimers(Node $node): void
+    {
+        foreach ((new ReflectionObject($node->component))->getMethods() as $method) {
             foreach ($method->getAttributes(Every::class) as $attribute) {
                 $node->timers[] = ($this->every)($attribute->newInstance()->seconds, function () use ($node, $method): void {
                     try {
@@ -135,7 +167,6 @@ final class Circuit
                 });
             }
         }
-        return $node;
     }
 
     /**
