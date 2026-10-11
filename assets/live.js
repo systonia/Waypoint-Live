@@ -55,9 +55,22 @@
         };
     };
 
-    const dispatch = (el, attribute, args) => {
+    // Events go out in the order they happened, even when one first has to read a file: each takes its place
+    // right away and is sent once its arguments are ready. Component and method are read at that moment too,
+    // a patch in between can't change them.
+    let order = Promise.resolve();
+    const enqueue = (el, attribute, args) => {
         const root = el.closest('[data-live]');
-        if (root) send({ t: 'call', id: root.dataset.liveId, m: el.getAttribute(attribute), a: args });
+        if (!root) return;
+        const id = root.dataset.liveId;
+        const method = el.getAttribute(attribute);
+        order = order
+            .then(async () => send({ t: 'call', id, m: method, a: await args }))
+            .catch((error) => {
+                // A file the browser couldn't read: the component shows it like a failed call
+                root.setAttribute('data-live-error', '');
+                console.error(error);
+            });
     };
 
     // Typing waits 150 ms; any other event sends what was typed first, so a quick click doesn't overtake it
@@ -66,13 +79,13 @@
         for (const [el, timer] of pending) {
             clearTimeout(timer);
             pending.delete(el);
-            dispatch(el, 'data-on-input', [el.value]);
+            enqueue(el, 'data-on-input', [el.value]);
         }
     };
 
     const call = (el, attribute, args) => {
         flush();
-        dispatch(el, attribute, args);
+        enqueue(el, attribute, args);
     };
 
     // data-on-click="select" data-arg="Berlin": the method, with an optional string argument
@@ -85,42 +98,50 @@
         clearTimeout(pending.get(el));
         pending.set(el, setTimeout(() => {
             pending.delete(el);
-            dispatch(el, 'data-on-input', [el.value]);
+            enqueue(el, 'data-on-input', [el.value]);
         }, 150));
     });
 
     // A file goes along base64-encoded; the server hands the method an UploadedFile
     const encode = (file) => new Promise((resolve, reject) => {
         const reader = new FileReader();
-        reader.onload = () => resolve({ $file: { name: file.name, type: file.type, data: reader.result.slice(reader.result.indexOf(',') + 1) } });
+        reader.onload = () => {
+            const comma = reader.result.indexOf(',');
+            resolve({ $file: { name: file.name, type: file.type, data: comma < 0 ? '' : reader.result.slice(comma + 1) } });
+        };
         reader.onerror = () => reject(reader.error);
         reader.readAsDataURL(file);
     });
 
-    // A form as an object: "photos[]" collects a list, an empty file input is left out
+    // A form as an object: "photos[]" collects a list, an empty file input is left out. The fields are taken
+    // when the form is submitted; only reading the files waits.
     const formObject = async (form) => {
         const object = {};
-        for (const [name, value] of new FormData(form)) {
+        for (const [name, value] of [...new FormData(form)]) {
             if (value instanceof File && value.name === '' && value.size === 0) continue;
             const entry = value instanceof File ? await encode(value) : value;
-            if (name.endsWith('[]')) (object[name.slice(0, -2)] ??= []).push(entry);
-            else object[name] = entry;
+            if (!name.endsWith('[]')) {
+                object[name] = entry;
+                continue;
+            }
+            const key = name.slice(0, -2);
+            object[key] = [...(Array.isArray(object[key]) ? object[key] : key in object ? [object[key]] : []), entry];
         }
         return object;
     };
 
-    Waypoint.directive('data-on-change', 'change', async (el) => {
+    Waypoint.directive('data-on-change', 'change', (el) => {
         if (el.type === 'file') {
-            const files = await Promise.all([...el.files].map(encode));
-            call(el, 'data-on-change', [el.multiple ? files : files[0] ?? null]);
+            const files = Promise.all([...el.files].map(encode));
+            call(el, 'data-on-change', files.then((list) => [el.multiple ? list : list[0] ?? null]));
             return;
         }
         call(el, 'data-on-change', [el.type === 'checkbox' ? el.checked : el.value]);
     });
 
-    Waypoint.directive('data-on-submit', 'submit', async (el, event) => {
+    Waypoint.directive('data-on-submit', 'submit', (el, event) => {
         event.preventDefault();
-        call(el, 'data-on-submit', [await formObject(el)]);
+        call(el, 'data-on-submit', formObject(el).then((form) => [form]));
     });
 
     const patchChildren = (target, html) => {

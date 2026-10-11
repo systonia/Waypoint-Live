@@ -22,6 +22,9 @@ final class Circuit
     // ponytail: fixed limit per tab, an option once an app needs more
     private const MAX_COMPONENTS = 50;
 
+    // ponytail: fixed limit per call; every file costs its content plus an object, an option once a form needs more
+    private const MAX_FILES = 20;
+
     /** @var array<string, Node> Every component by ID, children included. */
     private array $nodes = [];
 
@@ -160,7 +163,11 @@ final class Circuit
             throw new InvalidArgumentException("'$method' is not a public method");
         }
         try {
-            $reflection->invokeArgs($node->component, array_map(self::files(...), $args));
+            $files = 0;
+            foreach ($args as $i => $arg) {
+                $args[$i] = self::files($arg, $files);
+            }
+            $reflection->invokeArgs($node->component, $args);
         } finally {
             // A method that throws may have changed something before
             $this->changed();
@@ -171,20 +178,28 @@ final class Circuit
      * A file from the browser comes as {"$file": {"name", "type", "data"}}, its content base64-encoded; the method
      * gets it as an UploadedFile. Everything else stays as it came.
      */
-    private static function files(mixed $value): mixed
+    private static function files(mixed $value, int &$count): mixed
     {
         if (!is_array($value)) {
             return $value;
         }
         $file = $value['$file'] ?? null;
         if (count($value) !== 1 || !is_array($file)) {
-            return array_map(self::files(...), $value);
+            foreach ($value as $key => $item) {
+                $value[$key] = self::files($item, $count);
+            }
+            return $value;
+        }
+        if (++$count > self::MAX_FILES) {
+            throw new InvalidArgumentException('At most ' . self::MAX_FILES . ' files per call');
         }
         $data = base64_decode(is_string($file['data'] ?? null) ? $file['data'] : '', true);
         if ($data === false) {
             throw new InvalidArgumentException('A file needs its content base64-encoded');
         }
         $name = basename(str_replace('\\', '/', is_string($file['name'] ?? null) ? $file['name'] : ''));
+        // Neither a directory of its own nor its parent
+        $name = in_array($name, ['.', '..'], true) ? '' : $name;
         return new UploadedFile(
             $name,
             is_string($file['type'] ?? null) ? $file['type'] : '',

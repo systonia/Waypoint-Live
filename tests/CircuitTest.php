@@ -259,5 +259,12 @@ final class CircuitTest extends TestCase
 
         $circuit->handle($this->message(['t' => 'call', 'id' => 'c0', 'm' => 'pick', 'a' => [['$file' => ['name' => 'a', 'data' => '***']]]]));
         $this->assertSame(['id' => 'c0', 'error' => true], $this->sent[3]);
+
+        $circuit->handle($this->message(['t' => 'call', 'id' => 'c0', 'm' => 'pick', 'a' => [$file('..', '')]]));
+        $this->assertStringContainsString('<p> text/plain 0 </p>', $this->sent[4]['html']);
+
+        $many = array_fill(0, 21, $file('x.jpg', 'x'));
+        $circuit->handle($this->message(['t' => 'call', 'id' => 'c0', 'm' => 'save', 'a' => [['title' => 'Too many', 'photos' => $many]]]));
+        $this->assertSame(['id' => 'c0', 'error' => true], $this->sent[5]);
     }
 }

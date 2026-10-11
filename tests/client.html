@@ -3,7 +3,7 @@
 <body>
 <app-a data-live data-inputs="{}"><input id="f"><button id="btn" data-on-click="go">go</button><input id="typed" data-on-input="search"></app-a>
 <app-b data-live data-inputs="{}"><form><input id="fa" name="a"><input id="fb" name="b"></form><input id="bound" value="ab"><textarea id="ta">x</textarea><select id="sel"><option>1</option><option selected>2</option></select></app-b>
-<app-c data-live data-inputs="{}"><form id="up" data-on-submit="save"><input name="title" value="Trip"><input id="ph" type="file" name="photos[]" multiple><input type="file" name="empty"></form><input id="one" type="file" data-on-change="pick"></app-c>
+<app-c data-live data-inputs="{}"><form id="up" data-on-submit="save"><input name="title" value="Trip"><input id="ph" type="file" name="photos[]" multiple><input type="file" name="empty"></form><input id="one" type="file" data-on-change="pick"><form id="mix" data-on-submit="mix"><input name="tags" value="a"><input name="tags[]" value="b"></form></app-c>
 <pre id="out"></pre>
 <script>
 const sent = []; let ws;
@@ -15,19 +15,25 @@ window.Waypoint = { directive(attr, type, fn) { document.addEventListener(type, 
 const results = [];
 const check = (name, ok) => results.push(`${ok ? 'PASS' : 'FAIL'} ${name}`);
 const server = (m) => ws.onmessage({ data: JSON.stringify(m) });
+// Calls leave through a promise chain: let it run before looking at what was sent
+const tick = () => new Promise((r) => setTimeout(r, 0));
 const $ = (id) => document.getElementById(id);
 (async () => {
   ws.onopen();
   // Offline click, then a new circuit: the click is dropped
   $('btn').click();
+  await tick();
   server({ t: 'circuit', token: 't1', resumed: false });
+  await tick();
   check('queue dropped on new circuit', sent.filter((m) => m.t === 'call').length === 0 && sent.filter((m) => m.t === 'mount').length === 3);
   // Resumed circuit keeps the queue
-  sent.length = 0; ws.onclose(); $('btn').click(); ws.onopen();
+  sent.length = 0; ws.onclose(); $('btn').click(); await tick(); ws.onopen();
   server({ t: 'circuit', token: 't1', resumed: true });
+  await tick();
   check('queue kept on resume', sent.some((m) => m.t === 'call' && m.m === 'go'));
   // Typing then a quick click: input goes first
   sent.length = 0; $('typed').value = 'Mü'; $('typed').dispatchEvent(new Event('input', { bubbles: true })); $('btn').click();
+  await tick();
   check('typing flushed before click', sent.map((m) => m.m).join() === 'search,go' && sent[0].a[0] === 'Mü');
   await new Promise((r) => setTimeout(r, 200));
   check('no second input call', sent.length === 2);
@@ -70,6 +76,17 @@ const $ = (id) => document.getElementById(id);
   await new Promise((r) => setTimeout(r, 100));
   const pick = sent.find((m) => m.m === 'pick')?.a[0];
   check('file input sends its file', pick?.$file.name === 'one.png' && pick.$file.type === 'image/png' && pick.$file.data === btoa('x'));
+  // A click right after picking a file waits for the file: the order stays as it happened
+  sent.length = 0;
+  $('one').dispatchEvent(new Event('change', { bubbles: true }));
+  $('btn').click();
+  await new Promise((r) => setTimeout(r, 100));
+  check('file change stays ahead of a quick click', sent.map((m) => m.m).join() === 'pick,go');
+  // A plain field and a list field of the same name end up in the list
+  sent.length = 0;
+  $('mix').requestSubmit();
+  await new Promise((r) => setTimeout(r, 100));
+  check('name and name[] make one list', JSON.stringify(sent.find((m) => m.m === 'mix')?.a[0]) === '{"tags":["a","b"]}');
   $('out').textContent = results.join('\n');
 })();
 </script>

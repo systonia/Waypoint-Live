@@ -158,7 +158,10 @@ public function save(array $form): void
 ```
 
 Name and type come from the browser, as with any upload: never use the name as a path, and check the content
-before trusting the type. An empty file input is left out of the form; `multiple` gives a list.
+before trusting the type. An empty file input is left out of the form; `multiple` gives a list. The file's
+content lives in memory: move it, don't keep the `UploadedFile` in the component, or it stays for the life of
+the circuit. Events keep their order: a click right after picking a file waits until the file is read and sent.
+A file the browser can't read marks the component with `data-live-error`.
 
 ## Reconnect
 
@@ -204,7 +207,7 @@ components while they are parked. It is never in a URL, a cookie or storage.
 - `data-on-submit` sends the form as an object: `name[]` collects a list, any other repeated name (checkbox
   group, `select multiple`) keeps its last value.
 - A file travels base64-encoded inside one WebSocket message: a third bigger than the file, at most
-  `--max-body` (10 MB by default) per message.
+  `--max-body` (10 MB by default) per message, and at most 20 files per call.
 - An event sent while the connection is dying unnoticed (no ping yet) is lost.
 
 ## Demo
