@@ -205,6 +205,8 @@
             if (old.nodeValue !== node.nodeValue) old.nodeValue = node.nodeValue;
             return;
         }
+        // data-live-ignore: the element is the browser's once it's on the page (an editor, a map, a widget)
+        if (old.hasAttribute('data-live-ignore') && node.hasAttribute('data-live-ignore')) return;
         const before = rendered(old);
         for (const { name } of [...old.attributes]) if (!node.hasAttribute(name)) old.removeAttribute(name);
         for (const { name, value } of [...node.attributes]) if (old.getAttribute(name) !== value) old.setAttribute(name, value);

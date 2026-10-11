@@ -212,6 +212,10 @@ content lives in memory: move it, don't keep the `UploadedFile` in the component
 the circuit. Events keep their order: a click right after picking a file waits until the file is read and sent.
 A file the browser can't read marks the component with `data-live-error`.
 
+An element with `data-live-ignore` belongs to the browser once it is on the page: a render doesn't touch it or
+what is inside it. For an editor, a map or another widget that keeps its own DOM; put a `data-key` on it so it
+moves along with its row.
+
 ## Reconnect
 
 When the connection drops, the server keeps the tab's circuit for 3 minutes (at most 100 per worker, the
