@@ -4,7 +4,10 @@ namespace Waypoint\Live\Tests\Fixtures;
 
 use Waypoint\Live\{Component, Every, Input};
 
-#[Component(selector: 'test-counter', template: 'Counter.Template.php')]
+#[Component(
+    selector: 'test-counter',
+    template: 'Counter.Template.php'
+)]
 final class Counter
 {
     #[Input]

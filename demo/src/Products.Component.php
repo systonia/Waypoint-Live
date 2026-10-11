@@ -5,7 +5,10 @@ namespace Demo;
 use Waypoint\Attributes\Inject;
 use Waypoint\Live\Component;
 
-#[Component(selector: 'app-products', template: 'Products.Template.php')]
+#[Component(
+    selector: 'app-products',
+    template: 'Products.Template.php'
+)]
 final class Products
 {
     #[Inject]

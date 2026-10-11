@@ -5,7 +5,10 @@ namespace Waypoint\Live\Tests\Fixtures;
 use Waypoint\Http\UploadedFile;
 use Waypoint\Live\Component;
 
-#[Component(selector: 'test-uploader', template: 'Uploader.Template.php')]
+#[Component(
+    selector: 'test-uploader',
+    template: 'Uploader.Template.php'
+)]
 final class Uploader
 {
     public string $summary = '';

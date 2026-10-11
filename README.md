@@ -9,7 +9,10 @@ component calls services directly; there is no API route and no `fetch()` in bet
 
 ```php
 // Counter.Component.php
-#[Component(selector: 'app-counter', template: 'Counter.Template.php')]
+#[Component(
+    selector: 'app-counter',
+    template: 'Counter.Template.php'
+)]
 final class Counter
 {
     #[Input]
@@ -67,6 +70,9 @@ plugin starts.
 `$this` is the component at runtime without any declaration. For the IDE (completion, F12 into the
 component) start the template with `<?php /** @var \App\Counter $this */ ?>`: no IDE can learn the type
 from the plugin.
+
+`<?= $value ?>` escapes every value except a `Waypoint\Live\Html`, which carries markup that was built safely
+(another template's output, say) and is printed as it is.
 
 ## Nested components
 

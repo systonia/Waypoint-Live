@@ -5,7 +5,10 @@ namespace Waypoint\Live\Tests\Fixtures;
 use Waypoint\Attributes\Inject;
 use Waypoint\Live\{Component, Connection};
 
-#[Component(selector: 'test-visitor', template: 'Visitor.Template.php')]
+#[Component(
+    selector: 'test-visitor',
+    template: 'Visitor.Template.php'
+)]
 final class Visitor
 {
     #[Inject]

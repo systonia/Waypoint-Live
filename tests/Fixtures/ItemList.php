@@ -4,7 +4,10 @@ namespace Waypoint\Live\Tests\Fixtures;
 
 use Waypoint\Live\Component;
 
-#[Component(selector: 'test-list', template: 'ItemList.Template.php')]
+#[Component(
+    selector: 'test-list',
+    template: 'ItemList.Template.php'
+)]
 final class ItemList
 {
     /** @var list<string> */

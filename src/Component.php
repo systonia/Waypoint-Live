@@ -7,7 +7,10 @@ use Attribute;
 /**
  * Marks a class as a live component, Angular style:
  *
- *     #[Component(selector: 'app-counter', template: 'Counter.Template.php')]
+ *     #[Component(
+ *         selector: 'app-counter',
+ *         template: 'Counter.Template.php'
+ *     )]
  *     final class Counter { public int $count = 0; public function increment(): void { $this->count++; } }
  *
  * The template path is relative to the class's file. Views place the component with

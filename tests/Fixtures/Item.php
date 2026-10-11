@@ -5,7 +5,10 @@ namespace Waypoint\Live\Tests\Fixtures;
 use Closure;
 use Waypoint\Live\{Component, Every, Input};
 
-#[Component(selector: 'test-item', template: 'Item.Template.php')]
+#[Component(
+    selector: 'test-item',
+    template: 'Item.Template.php'
+)]
 final class Item
 {
     #[Input]

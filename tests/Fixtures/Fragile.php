@@ -5,7 +5,10 @@ namespace Waypoint\Live\Tests\Fixtures;
 use Waypoint\Attributes\Inject;
 use Waypoint\Live\{Component, Input};
 
-#[Component(selector: 'test-fragile', template: 'Fragile.Template.php')]
+#[Component(
+    selector: 'test-fragile',
+    template: 'Fragile.Template.php'
+)]
 final class Fragile
 {
     #[Input]

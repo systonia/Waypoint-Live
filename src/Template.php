@@ -50,7 +50,7 @@ final class Template
         }
     }
 
-    /** @internal What a compiled `<?= ?>` calls. */
+    /** @internal What a compiled `<?= ?>` calls: everything escaped, except Html. */
     public static function escape(mixed ...$values): string
     {
         $html = '';
@@ -58,7 +58,7 @@ final class Template
             if (!is_scalar($value) && $value !== null && !$value instanceof Stringable) {
                 throw new TypeError('A template can only print scalars and Stringable, not ' . get_debug_type($value));
             }
-            $html .= htmlspecialchars((string) $value, ENT_QUOTES);
+            $html .= $value instanceof Html ? (string) $value : htmlspecialchars((string) $value, ENT_QUOTES);
         }
         return $html;
     }
