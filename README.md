@@ -89,6 +89,21 @@ A template places other components by their tag:
 - Every change renders the whole top-level component again, children included. Views place top-level
   components with `$this->live()`; tags work inside component templates.
 
+## DOM patch
+
+The client patches each render into the page instead of replacing it. Siblings are matched by key and moved,
+so a reordered list keeps its elements (and the focus and caret inside them); everything else is
+matched by order. A child component's wrapper is keyed by its ID automatically; any other element gets a key
+with `data-key`:
+
+```php
+<?php foreach ($this->todos as $todo): ?>
+    <li data-key="<?= $todo->id ?>"><?= $todo->title ?></li>
+<?php endforeach ?>
+```
+
+The focused field keeps what is being typed; the server's value applies once it loses focus.
+
 ## Reconnect
 
 When the connection drops, the server keeps the tab's circuit for 3 minutes (at most 100 per worker, the
@@ -115,7 +130,6 @@ components while they are parked. It is never in a URL, a cookie or storage.
 
 - A circuit lives in the memory of one worker. With several workers a reconnect can land on another one and
   starts over; so does a restart or a deploy.
-- The DOM patch works by position, without keys: reordered lists rewrite their rows.
 - Every change renders the whole top-level component; fine for small trees, not for a page-sized one.
 - Tags inside a template need attributes in double quotes and an empty body (no content projection).
   Waypoint views use `$this->live()`, not tags.

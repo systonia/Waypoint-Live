@@ -77,36 +77,61 @@
         call(el, 'data-on-submit', [Object.fromEntries(new FormData(el))]);
     });
 
-    // ponytail: patches by position, no keys; a reordered list rewrites its rows instead of moving them
     const patchChildren = (target, html) => {
         const template = document.createElement('template');
         template.innerHTML = html;
+        // Moving a keyed row drops the focus inside it: put it back where it was, caret included
+        const focused = document.activeElement;
+        const caret = focused instanceof HTMLInputElement || focused instanceof HTMLTextAreaElement ? [focused.selectionStart, focused.selectionEnd] : null;
         patch(target, template.content);
+        if (focused && focused !== document.body && focused.isConnected && document.activeElement !== focused) {
+            focused.focus();
+            if (caret && caret[0] !== null) try { focused.setSelectionRange(...caret); } catch { /* type without a caret */ }
+        }
     };
 
+    // A child component's ID, or data-key="..." on any element: siblings with one are matched by it and moved,
+    // the others by their order among the unkeyed ones
+    const keyOf = (node) => node.nodeType === Node.ELEMENT_NODE ? node.getAttribute('data-key') ?? node.getAttribute('data-live-id') : null;
+
     const patch = (from, to) => {
-        const current = [...from.childNodes];
+        const keyed = new Map();
+        const unkeyed = [];
+        for (const child of from.childNodes) {
+            const key = keyOf(child);
+            if (key === null) unkeyed.push(child);
+            else keyed.set(key, child);
+        }
+        let nextUnkeyed = 0;
         const next = [...to.childNodes];
         next.forEach((node, i) => {
-            const old = current[i];
-            if (!old) {
-                from.appendChild(node);
-            } else if (old.nodeType !== node.nodeType || old.nodeName !== node.nodeName) {
-                from.replaceChild(node, old);
-            } else if (node.nodeType === Node.ELEMENT_NODE) {
-                for (const { name } of [...old.attributes]) if (!node.hasAttribute(name)) old.removeAttribute(name);
-                for (const { name, value } of [...node.attributes]) if (old.getAttribute(name) !== value) old.setAttribute(name, value);
-                // The server doesn't see what is being typed: the focused field keeps its value
-                if (old instanceof HTMLInputElement && old !== document.activeElement) {
-                    old.value = node.getAttribute('value') ?? '';
-                    old.checked = node.hasAttribute('checked');
-                }
-                patch(old, node);
-            } else if (old.nodeValue !== node.nodeValue) {
-                old.nodeValue = node.nodeValue;
+            const key = keyOf(node);
+            let old = key === null ? unkeyed[nextUnkeyed++] : keyed.get(key);
+            if (key !== null) keyed.delete(key);
+            if (old && old.nodeType === node.nodeType && old.nodeName === node.nodeName) {
+                update(old, node);
+            } else {
+                old = node;
             }
+            if (from.childNodes[i] !== old) from.insertBefore(old, from.childNodes[i] ?? null);
         });
-        for (let i = current.length - 1; i >= next.length; i--) current[i].remove();
+        // Every new node now sits at its position; what is left behind them was not matched
+        while (from.childNodes.length > next.length) from.lastChild.remove();
+    };
+
+    const update = (old, node) => {
+        if (node.nodeType !== Node.ELEMENT_NODE) {
+            if (old.nodeValue !== node.nodeValue) old.nodeValue = node.nodeValue;
+            return;
+        }
+        for (const { name } of [...old.attributes]) if (!node.hasAttribute(name)) old.removeAttribute(name);
+        for (const { name, value } of [...node.attributes]) if (old.getAttribute(name) !== value) old.setAttribute(name, value);
+        // The server doesn't see what is being typed: the focused field keeps its value
+        if (old instanceof HTMLInputElement && old !== document.activeElement) {
+            old.value = node.getAttribute('value') ?? '';
+            old.checked = node.hasAttribute('checked');
+        }
+        patch(old, node);
     };
 
     connect();

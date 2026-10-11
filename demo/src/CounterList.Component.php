@@ -22,4 +22,9 @@ final class CounterList
     {
         array_shift($this->counters);
     }
+
+    public function reverse(): void
+    {
+        $this->counters = array_reverse($this->counters);
+    }
 }
