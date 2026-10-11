@@ -126,7 +126,7 @@ The focused field keeps what is being typed; the server's value applies once it 
 ## Reconnect
 
 When the connection drops, the server keeps the tab's circuit for 3 minutes (at most 100 per worker, the
-oldest goes first), with its timers paused. The browser reconnects every second and sends the circuit's
+oldest goes first; one without components is not kept), with its timers paused. The browser reconnects every second and sends the circuit's
 token; the server hands back the same components with their state, renders them once to catch up and starts
 the timers again. Events from the time offline are queued and sent afterwards. If the circuit is gone, the
 components start again from the page's inputs. A reload is a new circuit, as in Blazor.
@@ -142,8 +142,11 @@ components while they are parked. It is never in a URL, a cookie or storage.
 - Only `#[Input]` properties can be set from outside, and their values come back from the browser when it
   connects: treat them like query parameters, never as proof of identity. The user comes from the upgrade
   request (JWT, session), which the route's guards check.
-- Arguments from the browser are bound to the method's parameter types; a mismatch is an error.
-- Errors go to the log; the browser only gets `{"error": true}`, and the circuit keeps running.
+- Arguments from the browser are converted to the method's parameter types as in a call without
+  `strict_types`: `"7"` fills an `int`, `"false"` fills a `bool` as `true`. One that can't be converted is an
+  error. Check the values in the method like any other request input.
+- Errors go to the log; the browser only gets `{"error": true}`, and the circuit keeps running. A component
+  whose render fails gets `data-live-error` and holds back no other component of the tab.
 
 ## Limits of the proof of concept
 
@@ -155,7 +158,11 @@ components while they are parked. It is never in a URL, a cookie or storage.
   tag; an input arrives as a string (`count="3"` still fills an `int`), so a `bool`, an array or an object
   needs `$this->live()`. A tag inside `<script>`, `<textarea>` or an HTML comment is expanded too.
 - At most 50 top-level components per tab.
-- A component's injected services must be reachable from a controller (or need no constructor arguments).
+- The circuit's token isn't tied to the session or the user of the connection that created it: a tab left
+  open across a logout and a login of someone else reconnects to the old components.
+- The server keeps a circuit only once it notices that the old connection is dead. A browser that notices
+  first (a network switch) may reconnect before that and start over.
+- A `//` comment inside `<?= ?>` breaks the template; use `/* */`.
 
 ## Demo
 

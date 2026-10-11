@@ -85,6 +85,11 @@ final class Circuit
         }
     }
 
+    public function isEmpty(): bool
+    {
+        return $this->nodes === [];
+    }
+
     /** The browser is gone for good: every timer stops, the components are dropped. */
     public function close(): void
     {
@@ -118,11 +123,7 @@ final class Circuit
         foreach ($this->nodes as $node) {
             $this->startTimers($node);
         }
-        foreach ($this->nodes as $node) {
-            if ($node->root === null) {
-                $this->render($node);
-            }
-        }
+        $this->changed(onlyIfChanged: false);
     }
 
     private function mount(string $id, mixed $selector, mixed $inputs): void
@@ -135,8 +136,15 @@ final class Circuit
             throw new InvalidArgumentException('mount needs a selector and inputs as an object');
         }
         [$component, $template] = $this->live->create($selector, $inputs, $this->services);
+        $node = $this->node($id, $selector, $component, $template, null);
+        try {
+            $this->render($node);
+        } catch (Throwable $e) {
+            // Never shown, never there: its ID stays free and its timers stop
+            $this->remove($node);
+            throw $e;
+        }
         $this->roots++;
-        $this->render($this->node($id, $selector, $component, $template, null));
     }
 
     private function call(string $id, mixed $method, mixed $args): void
@@ -150,8 +158,12 @@ final class Circuit
         if (!$reflection->isPublic() || $reflection->isStatic()) {
             throw new InvalidArgumentException("'$method' is not a public method");
         }
-        $reflection->invokeArgs($node->component, $args);
-        $this->changed();
+        try {
+            $reflection->invokeArgs($node->component, $args);
+        } finally {
+            // A method that throws may have changed something before
+            $this->changed();
+        }
     }
 
     private function node(string $id, string $selector, object $component, Template $template, ?Node $root): Node
@@ -184,11 +196,18 @@ final class Circuit
      *
      * ponytail: renders the whole tab on every change; track what each render read once tabs get big
      */
-    private function changed(): void
+    private function changed(bool $onlyIfChanged = true): void
     {
         foreach ($this->nodes as $node) {
-            if ($node->root === null) {
-                $this->render($node, onlyIfChanged: true);
+            if ($node->root !== null) {
+                continue;
+            }
+            // A component whose render fails doesn't hold back the others
+            try {
+                $this->render($node, $onlyIfChanged);
+            } catch (Throwable $e) {
+                ($this->report)($e);
+                ($this->send)(json_encode(['id' => $node->id, 'error' => true], JSON_THROW_ON_ERROR));
             }
         }
     }

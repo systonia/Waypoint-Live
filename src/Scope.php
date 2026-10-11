@@ -9,7 +9,7 @@ use Waypoint\Routing\PropertyInjector;
 /** @internal One circuit's #[Scoped] services; everything else comes from the app's container. */
 final class Scope extends Container
 {
-    /** @var array<class-string, bool> */
+    /** @var array<string, bool> */
     private static array $isScoped = [];
 
     /** @var array<class-string, object> */
@@ -26,8 +26,7 @@ final class Scope extends Container
      */
     public function get(string $id)
     {
-        self::$isScoped[$id] ??= class_exists($id) && (new ReflectionClass($id))->getAttributes(Scoped::class) !== [];
-        if (!self::$isScoped[$id]) {
+        if (!self::isScoped($id)) {
             return $this->app->get($id);
         }
         $service = $this->scoped[$id] ?? null;
@@ -38,5 +37,16 @@ final class Scope extends Container
         $service = $this->scoped[$id] = new $id();
         (new PropertyInjector($this))->injectReflected($service);
         return $service;
+    }
+
+    /** PropertyInjector asks this before get(): the app's services count, constructor arguments or not. */
+    public function has(string $class): bool
+    {
+        return self::isScoped($class) || $this->app->has($class);
+    }
+
+    private static function isScoped(string $class): bool
+    {
+        return self::$isScoped[$class] ??= class_exists($class) && (new ReflectionClass($class))->getAttributes(Scoped::class) !== [];
     }
 }
