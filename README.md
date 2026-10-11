@@ -109,12 +109,34 @@ a constructor without required arguments; its own `#[Inject]` properties are set
 When an action changes it, every component of the tab that shows it renders again: after a change all
 top-level components render, and those whose HTML changed are sent.
 
+## Components of a plugin
+
+A plugin that brings live components of its own requires `LivePlugin` and adds them in its `boot()`, the way
+waypoint-export-fixed adds its writer:
+
+```php
+public function requires(): array
+{
+    return [LivePlugin::class];
+}
+
+public function boot(Container $container): void
+{
+    $container->get(Components::class)->add(Login::class, Dashboard::class);
+}
+```
+
 ## The connection
 
 A component or a `#[Scoped]` service can inject `Waypoint\Live\Connection`: the request the WebSocket came in
 with, its cookies, and `$request->jwt` as the app's middlewares left it. After a reconnect it is the new
 connection's request. `navigate('/path')` sends the browser to another page of the site once the action is
-done, for example after a login. Only a path of the site is a destination, never another site.
+done, for example after a login. Only a path of the site is a destination, never another site. It counts even
+if the action throws afterwards, so a check can send a logged-out user to the login and stop the action; during
+the page's first render it is an error.
+
+`$request->jwt` is what the middlewares found when the WebSocket connected, not refreshed until a reconnect: a
+component that must notice a logout or a revoked token right away asks its source again on every action.
 
 ```php
 #[Inject]
@@ -194,7 +216,9 @@ queued and sent afterwards. If the circuit is gone, the components start again f
 queued events are dropped. A reload is a new circuit, as in Blazor.
 
 The token lives only in the page's memory and is a bearer secret for the circuit: whoever has it gets the
-components while they are parked. It is never in a URL, a cookie or storage.
+components while they are parked, but only as the same user. A circuit resumes only if the new connection's
+`$request->jwt` names the same `sub` as the one it was opened with; after a logout or for anyone else the
+components start over. It is never in a URL, a cookie or storage.
 
 ## Security
 

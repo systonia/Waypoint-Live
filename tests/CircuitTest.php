@@ -7,8 +7,8 @@ use PHPUnit\Framework\TestCase;
 use Throwable;
 use Waypoint\Container;
 use Waypoint\Http\{Request, Response};
-use Waypoint\Live\{Circuit, LivePlugin};
-use Waypoint\Live\Tests\Fixtures\{BasketBadge, BasketButton, Counter, Fragile, Item, ItemList, Label, Uploader, Visitor};
+use Waypoint\Live\{Circuit, Components, LivePlugin};
+use Waypoint\Live\Tests\Fixtures\{BasketBadge, BasketButton, Counter, Fragile, Item, ItemList, Label, Bouncer, Uploader, Visitor};
 
 final class CircuitTest extends TestCase
 {
@@ -44,7 +44,7 @@ final class CircuitTest extends TestCase
 
     private function plugin(): LivePlugin
     {
-        $live = new LivePlugin([Counter::class, ItemList::class, Item::class, BasketButton::class, BasketBadge::class, Fragile::class, Uploader::class, Visitor::class]);
+        $live = new LivePlugin([Counter::class, ItemList::class, Item::class, BasketButton::class, BasketBadge::class, Fragile::class, Uploader::class, Visitor::class, Bouncer::class]);
         $container = new Container();
         $container->set(new Label('fine'));
         $live->boot($container);
@@ -278,10 +278,12 @@ final class CircuitTest extends TestCase
         $circuit->handle($this->message(['t' => 'call', 'id' => 'c0', 'm' => 'leave', 'a' => ['/admin']]));
         $this->assertSame(['t' => 'navigate', 'url' => '/admin'], end($this->sent));
 
-        // Another site is no destination
-        $this->sent = [];
-        $circuit->handle($this->message(['t' => 'call', 'id' => 'c0', 'm' => 'leave', 'a' => ['//evil.test']]));
-        $this->assertSame([['id' => 'c0', 'error' => true]], $this->sent);
+        // Another site is no destination, however it is spelled: browsers drop tabs and line breaks from a URL
+        foreach (['//evil.test', "/\t/evil.test", "/\n/evil.test", "/\r\n/evil.test", '/\\evil.test', 'https://evil.test', 'javascript:alert(1)'] as $url) {
+            $this->sent = [];
+            $circuit->handle($this->message(['t' => 'call', 'id' => 'c0', 'm' => 'leave', 'a' => [$url]]));
+            $this->assertSame([['id' => 'c0', 'error' => true]], $this->sent, json_encode($url) ?: '');
+        }
 
         // A reconnect brings the new connection's request
         $circuit->detach();
@@ -293,5 +295,55 @@ final class CircuitTest extends TestCase
 
         // And the page's own render reads the page's request
         $this->assertStringContainsString('<p>cy</p>', Circuit::page($this->plugin(), 'test-visitor', [], '', Request::fromParts('GET', '/', cookies: ['who' => 'cy'])));
+    }
+
+    public function testAnotherPluginAddsItsComponentsAtBoot(): void
+    {
+        $live = new LivePlugin([Counter::class]);
+        $container = new Container();
+        $container->set(new Label('fine'));
+        $live->boot($container);
+        // What a plugin that requires LivePlugin does in its own boot()
+        $container->get(Components::class)->add(ItemList::class, Item::class);
+
+        $this->assertStringContainsString('<test-item data-live data-live-id=".0">', Circuit::page($live, 'test-list', []));
+        $this->expectException(\LogicException::class);
+        $container->get(Components::class)->add(Fragile::class);
+    }
+
+    public function testACircuitResumesOnlyForTheUserItWasOpenedFor(): void
+    {
+        $ada = Request::fromParts('GET', '/_live');
+        $ada->jwt = ['sub' => 1];
+        $circuit = $this->circuit($ada);
+        $bo = Request::fromParts('GET', '/_live');
+        $bo->jwt = ['sub' => 2];
+
+        $this->assertTrue($circuit->sameUser($ada));
+        $this->assertFalse($circuit->sameUser($bo));
+        $this->assertFalse($circuit->sameUser(Request::fromParts('GET', '/_live')));
+        $this->assertTrue($this->circuit()->sameUser(Request::fromParts('GET', '/_live')));
+    }
+
+    public function testNavigatingWhileThePageRendersIsAnError(): void
+    {
+        $this->expectException(\LogicException::class);
+        Circuit::page($this->plugin(), 'test-bouncer', []);
+    }
+
+    public function testTheViewHelperRendersWithThePagesRequest(): void
+    {
+        $live = $this->plugin();
+        $middleware = $live->middlewares()[0];
+        $this->assertInstanceOf(\Waypoint\Http\MiddlewareBase::class, $middleware);
+        $middleware->handle(Request::fromParts('GET', '/', cookies: ['who' => 'dee']), new Response(), static fn () => null);
+
+        $this->assertStringContainsString('<p>dee</p>', ($live->helpers()['live'])('test-visitor'));
+    }
+
+    public function testAComponentWithoutItsTemplateFailsAtBoot(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+        (new Components())->add(\Waypoint\Live\Tests\Fixtures\Orphan::class);
     }
 }

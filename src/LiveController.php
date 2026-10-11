@@ -57,6 +57,11 @@ final class LiveController
                     $hello = json_decode($message, true);
                     $asked = is_array($hello) && is_string($hello['token'] ?? null) ? $hello['token'] : '';
                     $circuit = self::unpark($asked);
+                    // Someone else, or nobody any more after a logout: the components start over for this user
+                    if ($circuit !== null && !$circuit->sameUser($req)) {
+                        $circuit->close();
+                        $circuit = null;
+                    }
                     $resumed = $circuit !== null;
                     $token = $resumed ? $asked : bin2hex(random_bytes(16));
                     $circuit ??= new Circuit($live, $send, static fn (Throwable $e) => $logger->error('live: ' . $e->getMessage(), ['exception' => $e]), null, $req);

@@ -67,11 +67,15 @@ final class Circuit
         }, static fn (): Closure => static function (): void {
         }, $request);
         [$component, $template] = $live->create($selector, $inputs, $circuit->services);
+        $html = $circuit->html($circuit->node('', $selector, $component, $template, null));
+        if ($circuit->connection->takeNavigation() !== null) {
+            throw new LogicException("<$selector> called navigate() while the page renders: only actions and timers can");
+        }
         return sprintf(
             '<%1$s%4$s data-live data-inputs="%2$s">%3$s</%1$s>',
             $selector,
             htmlspecialchars(json_encode((object) $inputs, JSON_THROW_ON_ERROR), ENT_QUOTES),
-            $circuit->html($circuit->node('', $selector, $component, $template, null)),
+            $html,
             $attributes,
         );
     }
@@ -103,6 +107,18 @@ final class Circuit
         if ($url !== null) {
             ($this->send)(json_encode(['t' => 'navigate', 'url' => $url], JSON_THROW_ON_ERROR));
         }
+    }
+
+    /** Whether $request belongs to the user this circuit was opened for: $request->jwt's sub, as Waypoint keeps it. */
+    public function sameUser(Request $request): bool
+    {
+        return self::subject($this->connection->request) === self::subject($request);
+    }
+
+    private static function subject(Request $request): mixed
+    {
+        $jwt = $request->jwt;
+        return is_array($jwt) ? $jwt['sub'] ?? null : (is_object($jwt) ? $jwt->sub ?? null : null);
     }
 
     public function isEmpty(): bool

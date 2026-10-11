@@ -19,11 +19,16 @@ final class Connection
     {
     }
 
-    /** After this action, the browser loads $url: a path on this site ("/admin"). */
+    /**
+     * After this action, the browser loads $url: a path on this site ("/admin"). It counts even if the action
+     * throws afterwards, so a check can send a logged-out user to the login and stop the action. Not during the
+     * page's first render, only from actions and timers.
+     */
     public function navigate(string $url): void
     {
-        // A path of our own, never another site: "//evil.test" or "javascript:" would leave it
-        if (!str_starts_with($url, '/') || str_starts_with($url, '//') || str_contains($url, '\\')) {
+        // A path of our own, never another site: "//evil.test" or "javascript:" would leave it, and so would
+        // "/\t/evil.test", since browsers drop tabs and line breaks from a URL
+        if (!str_starts_with($url, '/') || str_starts_with($url, '//') || preg_match('/[\x00-\x20\x7f\\\\]/', $url) === 1) {
             throw new InvalidArgumentException("navigate() takes a path on this site, not '$url'");
         }
         $this->navigation = $url;
