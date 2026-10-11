@@ -6,6 +6,7 @@ use Closure;
 use PHPUnit\Framework\TestCase;
 use Throwable;
 use Waypoint\Container;
+use Waypoint\Http\{Request, Response};
 use Waypoint\Live\{Circuit, LivePlugin};
 use Waypoint\Live\Tests\Fixtures\{BasketBadge, BasketButton, Counter, Item, ItemList};
 
@@ -158,6 +159,24 @@ final class CircuitTest extends TestCase
 
         $this->assertStringStartsWith('<test-list data-live data-inputs="{}"><test-item data-live data-live-id=".0">', $html);
         $this->assertStringContainsString('data-live-id=".1"', $html);
+    }
+
+    public function testTagsInARenderedPageBecomeComponents(): void
+    {
+        $live = $this->plugin();
+        $page = '<p><test-counter class="big" count="3"></test-counter><test-list /></p>' . Circuit::page($live, 'test-counter', []);
+        $res = (new Response())->withHeader('Content-Type', 'text/html')->write($page);
+        $live->after([], Request::fromParts('GET', '/'), $res);
+
+        // An attribute that is no #[Input] stays on the tag
+        $this->assertStringStartsWith('<p><test-counter class="big" data-live data-inputs="{&quot;count&quot;:&quot;3&quot;}"><button', $res->getBody());
+        $this->assertStringContainsString('<output>3</output>', $res->getBody());
+        $this->assertStringContainsString('<test-list data-live data-inputs="{}"><test-item data-live data-live-id=".0">', $res->getBody());
+        // A component already rendered, and anything that is not HTML, stays as it is
+        $this->assertStringEndsWith(Circuit::page($live, 'test-counter', []), $res->getBody());
+        $json = (new Response())->withHeader('Content-Type', 'application/json')->write('"<test-counter></test-counter>"');
+        $live->after([], Request::fromParts('GET', '/'), $json);
+        $this->assertSame('"<test-counter></test-counter>"', $json->getBody());
     }
 
     public function testADetachedCircuitPausesAndComesBackWithItsState(): void

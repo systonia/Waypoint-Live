@@ -33,7 +33,7 @@ $app->plugin(new LivePlugin([Counter::class]));   // only listed components can 
 ```
 
 ```php
-<?= $this->live('app-counter', ['count' => 3]) ?>        <!-- in a view -->
+<app-counter count="3"></app-counter>                     <!-- in a view -->
 <?= $this->waypointJsTag() ?><?= $this->pluginAssetTags() ?>   <!-- in the layout -->
 ```
 
@@ -42,8 +42,8 @@ Composer `classmap` (see the demo). The template path is relative to the compone
 
 ## How it works
 
-1. `$this->live()` creates the component, sets its `#[Input]` properties and renders the template into the
-   page, wrapped in its selector: `<app-counter data-live data-inputs="{...}">`. Without JavaScript the page
+1. The page's tags (or `$this->live('app-counter', ['count' => 3])`) create the component, set its `#[Input]`
+   properties and render the template into the page, wrapped in its selector: `<app-counter data-live data-inputs="{...}">`. Without JavaScript the page
    stays as rendered.
 2. `live.js` opens a WebSocket to `/_live`, a normal Waypoint route: the app's middlewares and guards run, and
    the connection is refused unless its `Origin` is this site.
@@ -86,8 +86,7 @@ A template places other components by their tag:
   changed itself.
 - Events go up through a closure input: the child calls `($this->pick)($this->city)`, the parent's method runs.
   That method doesn't need to be in the parent's template, so the browser can't call it directly.
-- Every change renders the top-level components again, children included. Views place top-level
-  components with `$this->live()`; tags work inside component templates.
+- Every change renders the top-level components again, children included.
 
 ## Services per tab
 
@@ -151,8 +150,10 @@ components while they are parked. It is never in a URL, a cookie or storage.
 - A circuit lives in the memory of one worker. With several workers a reconnect can land on another one and
   starts over; so does a restart or a deploy.
 - Every change renders every top-level component of the tab; fine for small pages, not for big ones.
-- Tags inside a template need attributes in double quotes and an empty body (no content projection).
-  Waypoint views use `$this->live()`, not tags.
+- Tags need attributes in double quotes and an empty body (no content projection). In a Waypoint view the
+  rendered HTML page is searched for them. An attribute that is no `#[Input]` (`class`, `id`) stays on the
+  tag; an input arrives as a string (`count="3"` still fills an `int`), so a `bool`, an array or an object
+  needs `$this->live()`. A tag inside `<script>`, `<textarea>` or an HTML comment is expanded too.
 - At most 50 top-level components per tab.
 - A component's injected services must be reachable from a controller (or need no constructor arguments).
 

@@ -4,18 +4,19 @@ namespace Waypoint\Live;
 
 use InvalidArgumentException;
 use ReflectionClass;
-use ReflectionObject;
+use ReflectionProperty;
 use Waypoint\Container;
-use Waypoint\Plugin\{ClientAsset, PluginBase, ViewHelper};
+use Waypoint\Http\{Request, Response};
+use Waypoint\Plugin\{ClientAsset, PluginBase, ResponseHook, ViewHelper};
 use Waypoint\Routing\PropertyInjector;
 
 /**
  * Register with `$app->plugin(new LivePlugin([Counter::class, Search::class]))`: classes with a #[Component]
  * attribute, and only these can be created; the browser names them by selector. Adds
- * `$this->live('app-counter', $inputs)` for views, the WebSocket route `/_live` (LiveController) and the client
+ * `$this->live('app-counter', $inputs)` and `<app-counter count="3"></app-counter>` for views, the WebSocket route `/_live` (LiveController) and the client
  * script. Runs under Tenma only.
  */
-final class LivePlugin extends PluginBase implements ViewHelper, ClientAsset
+final class LivePlugin extends PluginBase implements ViewHelper, ClientAsset, ResponseHook
 {
     private Container $container;
 
@@ -96,14 +97,49 @@ final class LivePlugin extends PluginBase implements ViewHelper, ClientAsset
      */
     public function setInputs(object $component, string $selector, array $inputs): void
     {
-        $reflection = new ReflectionObject($component);
         foreach ($inputs as $name => $value) {
-            $property = $reflection->hasProperty((string) $name) ? $reflection->getProperty((string) $name) : null;
-            if ($property === null || !$property->isPublic() || $property->isStatic() || $property->getAttributes(Input::class) === []) {
+            if (!$this->isInput($component::class, (string) $name)) {
                 throw new InvalidArgumentException("'$name' is not an #[Input] of '$selector'");
             }
-            $property->setValue($component, $value);
+            $component->{$name} = $value;
         }
+    }
+
+    /** @param class-string $class */
+    private function isInput(string $class, string $name): bool
+    {
+        $property = property_exists($class, $name) ? new ReflectionProperty($class, $name) : null;
+        return $property !== null && $property->isPublic() && !$property->isStatic() && $property->getAttributes(Input::class) !== [];
+    }
+
+    /**
+     * Expands the components' tags in a rendered HTML page. Attributes are strings in double quotes: an #[Input]
+     * becomes an input, any other (class, id, ...) stays on the tag. An attribute without a value, e.g. data-live
+     * on a rendered component, leaves the tag alone.
+     */
+    public function after(array $plan, Request $req, Response $res): void
+    {
+        if (!str_starts_with((string) $res->getHeader('Content-Type'), 'text/html') || $this->components === []) {
+            return;
+        }
+        $selectors = implode('|', array_map(static fn (string $s) => preg_quote($s, '/'), array_keys($this->components)));
+        $res->mapBody(fn (string $body): string => (string) preg_replace_callback(
+            '/<(' . $selectors . ')((?:\s+[A-Za-z_][\w.:-]*="[^"]*")*)\s*(?:\/>|>\s*<\/\1>)/',
+            function (array $m): string {
+                preg_match_all('/\s+([A-Za-z_][\w.:-]*)="([^"]*)"/', $m[2], $attributes, PREG_SET_ORDER);
+                $inputs = [];
+                $rest = '';
+                foreach ($attributes as [$attribute, $name, $value]) {
+                    if ($this->isInput($this->components[$m[1]][0], $name)) {
+                        $inputs[$name] = html_entity_decode($value, ENT_QUOTES | ENT_HTML5);
+                    } else {
+                        $rest .= $attribute;
+                    }
+                }
+                return Circuit::page($this, $m[1], $inputs, $rest);
+            },
+            $body,
+        ));
     }
 
     /** A new circuit's services: its own #[Scoped] ones, the app's for the rest. */

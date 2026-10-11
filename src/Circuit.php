@@ -48,8 +48,9 @@ final class Circuit
      * IDs are relative (".0"): the browser puts the top-level ID it picks in front.
      *
      * @param array<string, mixed> $inputs
+     * @param string $attributes Further attributes for the tag, already escaped: ' class="big"'
      */
-    public static function page(LivePlugin $live, string $selector, array $inputs): string
+    public static function page(LivePlugin $live, string $selector, array $inputs, string $attributes = ''): string
     {
         $circuit = new self($live, static function (): void {
         }, static function (): void {
@@ -57,10 +58,11 @@ final class Circuit
         });
         [$component, $template] = $live->create($selector, $inputs, $circuit->services);
         return sprintf(
-            '<%1$s data-live data-inputs="%2$s">%3$s</%1$s>',
+            '<%1$s%4$s data-live data-inputs="%2$s">%3$s</%1$s>',
             $selector,
             htmlspecialchars(json_encode((object) $inputs, JSON_THROW_ON_ERROR), ENT_QUOTES),
             $circuit->html($circuit->node('', $selector, $component, $template, null)),
+            $attributes,
         );
     }
 
