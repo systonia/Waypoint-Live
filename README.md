@@ -23,8 +23,9 @@ final class Counter
 ```
 
 ```php
-<!-- Counter.Template.php: $this is the component; {$...} is escaped -->
-<button data-on-click="increment">{$this->count}</button>
+<?php /** @var Counter $this */ ?>
+<!-- Counter.Template.php: $this is the component, <?= ?> escapes -->
+<button data-on-click="increment"><?= $this->count ?></button>
 ```
 
 ```php
@@ -57,9 +58,14 @@ Composer `classmap` (see the demo). The template path is relative to the compone
 
 ## Templates
 
-A template is a PHP file rendered with `$this` as the component, private properties included. `{$expr}` in
-the HTML is HTML-escaped; `<?php foreach (...): ?>` and `<?php if (...): ?>` work as in any view; `<?= ?>`
-stays raw for HTML you built yourself. Templates are compiled once when the plugin starts.
+A template is a PHP file rendered with `$this` as the component, private properties included. Unlike in a
+Waypoint view, `<?= $expr ?>` is HTML-escaped; `<?php echo $html ?>` stays raw for HTML you built yourself.
+`<?php foreach (...): ?>` and `<?php if (...): ?>` work as in any view. Templates are compiled once when the
+plugin starts.
+
+`$this` is the component at runtime without any declaration. For the IDE (completion, F12 into the
+component) start the template with `<?php /** @var \App\Counter $this */ ?>`: no IDE can learn the type
+from the plugin.
 
 ## Nested components
 
@@ -68,11 +74,11 @@ A template places other components by their tag:
 ```php
 <!-- CitySearch.Template.php -->
 <?php foreach ($this->cities as $city): ?>
-    <app-city-row key="{$city}" city="{$city}" selected="{$city === $this->selected}" pick="{$this->select(...)}"></app-city-row>
+    <app-city-row key="<?= $city ?>" city="<?= $city ?>" selected="<?= $city === $this->selected ?>" pick="<?= $this->select(...) ?>"></app-city-row>
 <?php endforeach ?>
 ```
 
-- Attributes set the child's `#[Input]` properties. A value that is a single `{$expr}` passes the value itself
+- Attributes set the child's `#[Input]` properties. A value that is a single `<?= $expr ?>` passes the value itself
   (a bool, an object, a closure); anything else passes a string.
 - A child keeps its state as long as the parent's template keeps placing it: by `key`, or without one by its
   position among the tags of that selector. A child that is no longer placed is removed, its timers stop.
@@ -99,8 +105,8 @@ A template places other components by their tag:
 - One reconnect strategy: a new connection starts the components again from the page's inputs.
 - The DOM patch works by position, without keys: reordered lists rewrite their rows.
 - Every change renders the whole top-level component; fine for small trees, not for a page-sized one.
-- Tags inside a template need a single line of attributes in double quotes, an empty body (no content
-  projection) and `{$...}` instead of `<?= ?>` in their values. Waypoint views use `$this->live()`, not tags.
+- Tags inside a template need attributes in double quotes and an empty body (no content projection).
+  Waypoint views use `$this->live()`, not tags.
 - At most 50 top-level components per tab, no per-circuit services yet.
 - A component's injected services must be reachable from a controller (or need no constructor arguments).
 

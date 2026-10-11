@@ -54,7 +54,8 @@ final class CircuitTest extends TestCase
 
     private static function html(int $count): string
     {
-        return "<button data-on-click=\"add\" data-arg=\"1\">&lt;b&gt;</button>\n<output>$count</output>\n";
+        // An echo tag escapes, an echo statement stays raw
+        return "<button data-on-click=\"add\" data-arg=\"1\">&lt;b&gt;</button>\n<output>$count</output>\n<b>";
     }
 
     public function testMountRendersTheTemplateEscapedAndAMethodRendersAgain(): void
