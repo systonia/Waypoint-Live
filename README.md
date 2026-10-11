@@ -121,15 +121,19 @@ with `data-key`:
 <?php endforeach ?>
 ```
 
-The focused field keeps what is being typed; the server's value applies once it loses focus.
+Unkeyed siblings are matched among those of the same tag, so a message showing up in front of an input
+leaves the input alone. A form field keeps what the user typed or picked until the server renders a different
+value for it; while it has the focus, only if the server already had what is in it, so a render that lags
+behind the typing loses nothing. Typing is sent after 150 ms, or right before any other event.
 
 ## Reconnect
 
 When the connection drops, the server keeps the tab's circuit for 3 minutes (at most 100 per worker, the
-oldest goes first; one without components is not kept), with its timers paused. The browser reconnects every second and sends the circuit's
-token; the server hands back the same components with their state, renders them once to catch up and starts
-the timers again. Events from the time offline are queued and sent afterwards. If the circuit is gone, the
-components start again from the page's inputs. A reload is a new circuit, as in Blazor.
+oldest goes first; one without components is not kept), with its timers paused. The browser reconnects after
+1, 2, 4 ... at most 30 seconds and sends the circuit's token; the server hands back the same components with
+their state, renders them once to catch up and starts the timers again. Events from the time offline are
+queued and sent afterwards. If the circuit is gone, the components start again from the page's inputs and the
+queued events are dropped. A reload is a new circuit, as in Blazor.
 
 The token lives only in the page's memory and is a bearer secret for the circuit: whoever has it gets the
 components while they are parked. It is never in a URL, a cookie or storage.
@@ -163,6 +167,9 @@ components while they are parked. It is never in a URL, a cookie or storage.
 - The server keeps a circuit only once it notices that the old connection is dead. A browser that notices
   first (a network switch) may reconnect before that and start over.
 - A `//` comment inside `<?= ?>` breaks the template; use `/* */`.
+- `data-on-submit` sends the form as an object: a repeated name (checkbox group, `select multiple`) keeps its
+  last value, files are not sent.
+- An event sent while the connection is dying unnoticed (no ping yet) is lost.
 
 ## Demo
 

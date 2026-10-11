@@ -15,6 +15,7 @@
     let ready = false;
     // The server's circuit for this tab: on a reconnect it hands back the components with their state
     let token = null;
+    let attempt = 0;
 
     const send = (message) => {
         if (ready) socket.send(JSON.stringify(message));
@@ -28,8 +29,11 @@
             const message = JSON.parse(event.data);
             if (message.t === 'circuit') {
                 token = message.token;
-                // A new circuit (first connection, or the old one expired): the components start from the page's inputs
+                attempt = 0;
+                // A new circuit (first connection, or the old one expired): the components start from the page's
+                // inputs, and what was clicked offline was meant for the old ones
                 if (!message.resumed) {
+                    queue.length = 0;
                     for (const root of roots) {
                         socket.send(JSON.stringify({ t: 'mount', id: root.dataset.liveId, c: root.localName, p: JSON.parse(root.dataset.inputs || '{}') }));
                     }
@@ -47,13 +51,28 @@
         socket.onclose = () => {
             ready = false;
             document.documentElement.setAttribute('data-live-offline', '');
-            setTimeout(connect, 1000);
+            setTimeout(connect, Math.min(1000 * 2 ** attempt++, 30000));
         };
     };
 
-    const call = (el, attribute, args) => {
+    const dispatch = (el, attribute, args) => {
         const root = el.closest('[data-live]');
         if (root) send({ t: 'call', id: root.dataset.liveId, m: el.getAttribute(attribute), a: args });
+    };
+
+    // Typing waits 150 ms; any other event sends what was typed first, so a quick click doesn't overtake it
+    const pending = new Map();
+    const flush = () => {
+        for (const [el, timer] of pending) {
+            clearTimeout(timer);
+            pending.delete(el);
+            dispatch(el, 'data-on-input', [el.value]);
+        }
+    };
+
+    const call = (el, attribute, args) => {
+        flush();
+        dispatch(el, attribute, args);
     };
 
     // data-on-click="select" data-arg="Berlin": the method, with an optional string argument
@@ -62,10 +81,12 @@
         call(el, 'data-on-click', el.hasAttribute('data-arg') ? [el.dataset.arg] : []);
     });
 
-    const pending = new WeakMap();
     Waypoint.directive('data-on-input', 'input', (el) => {
         clearTimeout(pending.get(el));
-        pending.set(el, setTimeout(() => call(el, 'data-on-input', [el.value]), 150));
+        pending.set(el, setTimeout(() => {
+            pending.delete(el);
+            dispatch(el, 'data-on-input', [el.value]);
+        }, 150));
     });
 
     Waypoint.directive('data-on-change', 'change', (el) => {
@@ -91,22 +112,23 @@
     };
 
     // A child component's ID, or data-key="..." on any element: siblings with one are matched by it and moved,
-    // the others by their order among the unkeyed ones
+    // the others by their order among the unkeyed ones of the same tag, so an element showing up in front of an
+    // input doesn't take the input's place
     const keyOf = (node) => node.nodeType === Node.ELEMENT_NODE ? node.getAttribute('data-key') ?? node.getAttribute('data-live-id') : null;
 
     const patch = (from, to) => {
         const keyed = new Map();
-        const unkeyed = [];
+        const unkeyed = new Map();
         for (const child of from.childNodes) {
             const key = keyOf(child);
-            if (key === null) unkeyed.push(child);
-            else keyed.set(key, child);
+            if (key !== null) keyed.set(key, child);
+            else if (unkeyed.has(child.nodeName)) unkeyed.get(child.nodeName).push(child);
+            else unkeyed.set(child.nodeName, [child]);
         }
-        let nextUnkeyed = 0;
         const next = [...to.childNodes];
         next.forEach((node, i) => {
             const key = keyOf(node);
-            let old = key === null ? unkeyed[nextUnkeyed++] : keyed.get(key);
+            let old = key === null ? unkeyed.get(node.nodeName)?.shift() : keyed.get(key);
             if (key !== null) keyed.delete(key);
             if (old && old.nodeType === node.nodeType && old.nodeName === node.nodeName) {
                 update(old, node);
@@ -119,19 +141,32 @@
         while (from.childNodes.length > next.length) from.lastChild.remove();
     };
 
+    // What the server last rendered into a form field; null for anything else
+    const rendered = (el) => {
+        if (el instanceof HTMLInputElement && el.type !== 'file') return { value: el.getAttribute('value') ?? '', checked: el.hasAttribute('checked') };
+        if (el instanceof HTMLTextAreaElement) return { value: el.defaultValue, checked: false };
+        if (el instanceof HTMLSelectElement) return { value: [...el.options].map((o) => o.defaultSelected).join(), checked: false };
+        return null;
+    };
+
     const update = (old, node) => {
         if (node.nodeType !== Node.ELEMENT_NODE) {
             if (old.nodeValue !== node.nodeValue) old.nodeValue = node.nodeValue;
             return;
         }
+        const before = rendered(old);
         for (const { name } of [...old.attributes]) if (!node.hasAttribute(name)) old.removeAttribute(name);
         for (const { name, value } of [...node.attributes]) if (old.getAttribute(name) !== value) old.setAttribute(name, value);
-        // The server doesn't see what is being typed: the focused field keeps its value
-        if (old instanceof HTMLInputElement && old !== document.activeElement) {
-            old.value = node.getAttribute('value') ?? '';
-            old.checked = node.hasAttribute('checked');
-        }
         patch(old, node);
+        if (before === null) return;
+        // A field keeps what the user typed or picked until the server renders a different value. A focused
+        // field takes it only if the server had what is in it: a render lagging behind the typing loses nothing.
+        const after = rendered(old);
+        if (after.value !== before.value && (old instanceof HTMLSelectElement || old !== document.activeElement || old.value === before.value)) {
+            if (old instanceof HTMLSelectElement) for (const option of old.options) option.selected = option.defaultSelected;
+            else old.value = after.value;
+        }
+        if (after.checked !== before.checked) old.checked = after.checked;
     };
 
     connect();

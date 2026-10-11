@@ -1,0 +1,57 @@
+<!doctype html><meta charset="utf-8"><title>live.js check</title>
+<!-- Checks live.js against a fake server: php -S localhost:8098 in the repo, open /tests/client.html, every line must say PASS -->
+<body>
+<app-a data-live data-inputs="{}"><input id="f"><button id="btn" data-on-click="go">go</button><input id="typed" data-on-input="search"></app-a>
+<app-b data-live data-inputs="{}"><form><input id="fa" name="a"><input id="fb" name="b"></form><input id="bound" value="ab"><textarea id="ta">x</textarea><select id="sel"><option>1</option><option selected>2</option></select></app-b>
+<pre id="out"></pre>
+<script>
+const sent = []; let ws;
+window.WebSocket = class { constructor() { ws = this; } send(m) { sent.push(JSON.parse(m)); } };
+window.Waypoint = { directive(attr, type, fn) { document.addEventListener(type, (e) => { const el = e.target.closest(`[${attr}]`); if (el) fn(el, e); }); } };
+</script>
+<script src="../assets/live.js"></script>
+<script>
+const results = [];
+const check = (name, ok) => results.push(`${ok ? 'PASS' : 'FAIL'} ${name}`);
+const server = (m) => ws.onmessage({ data: JSON.stringify(m) });
+const $ = (id) => document.getElementById(id);
+(async () => {
+  ws.onopen();
+  // Offline click, then a new circuit: the click is dropped
+  $('btn').click();
+  server({ t: 'circuit', token: 't1', resumed: false });
+  check('queue dropped on new circuit', sent.filter((m) => m.t === 'call').length === 0 && sent.filter((m) => m.t === 'mount').length === 2);
+  // Resumed circuit keeps the queue
+  sent.length = 0; ws.onclose(); $('btn').click(); ws.onopen();
+  server({ t: 'circuit', token: 't1', resumed: true });
+  check('queue kept on resume', sent.some((m) => m.t === 'call' && m.m === 'go'));
+  // Typing then a quick click: input goes first
+  sent.length = 0; $('typed').value = 'Mü'; $('typed').dispatchEvent(new Event('input', { bubbles: true })); $('btn').click();
+  check('typing flushed before click', sent.map((m) => m.m).join() === 'search,go' && sent[0].a[0] === 'Mü');
+  await new Promise((r) => setTimeout(r, 200));
+  check('no second input call', sent.length === 2);
+  // A <p> shows up in front of the focused input
+  const f = $('f'); f.focus(); f.value = 'abc';
+  server({ id: 'c0', html: '<p>err</p><input id="f"><button id="btn" data-on-click="go">go</button><input id="typed" data-on-input="search">' });
+  check('focused input survives a new sibling', $('f') === f && document.activeElement === f && f.value === 'abc');
+  // Unbound form fields keep their values
+  const b = '<form><input id="fa" name="a"><input id="fb" name="b"></form>';
+  $('fa').value = 'x'; $('fb').focus();
+  server({ id: 'c1', html: b + '<input id="bound" value="ab"><textarea id="ta">x</textarea><select id="sel"><option>1</option><option selected>2</option></select>' });
+  check('unbound field kept', $('fa').value === 'x');
+  // Focused bound field: a lagging render loses nothing, a render of what it has applies
+  const bound = $('bound'); bound.focus(); bound.value = 'abcd';
+  server({ id: 'c1', html: b + '<input id="bound" value="abc"><textarea id="ta">x</textarea><select id="sel"><option>1</option><option selected>2</option></select>' });
+  check('lagging render keeps typing', bound.value === 'abcd');
+  server({ id: 'c1', html: b + '<input id="bound" value="abcd"><textarea id="ta">x</textarea><select id="sel"><option>1</option><option selected>2</option></select>' });
+  server({ id: 'c1', html: b + '<input id="bound" value=""><textarea id="ta">x</textarea><select id="sel"><option>1</option><option selected>2</option></select>' });
+  check('server clears focused field it knew', bound.value === '');
+  // textarea and select take a changed server value after user edits
+  $('ta').value = 'hi'; $('sel').value = '1'; $('fb').focus();
+  server({ id: 'c1', html: b + '<input id="bound" value=""><textarea id="ta"></textarea><select id="sel"><option selected>1</option><option>2</option></select>' });
+  server({ id: 'c1', html: b + '<input id="bound" value=""><textarea id="ta"></textarea><select id="sel"><option>1</option><option selected>2</option></select>' });
+  check('textarea takes server value', $('ta').value === '');
+  check('select takes server value', $('sel').value === '2');
+  $('out').textContent = results.join('\n');
+})();
+</script>
