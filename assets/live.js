@@ -27,6 +27,11 @@
         socket.onopen = () => socket.send(JSON.stringify({ t: 'hello', token }));
         socket.onmessage = (event) => {
             const message = JSON.parse(event.data);
+            // An action sent the browser elsewhere: a path on this site, the server made sure
+            if (message.t === 'navigate') {
+                location.assign(message.url);
+                return;
+            }
             if (message.t === 'circuit') {
                 token = message.token;
                 attempt = 0;

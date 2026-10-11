@@ -109,6 +109,27 @@ a constructor without required arguments; its own `#[Inject]` properties are set
 When an action changes it, every component of the tab that shows it renders again: after a change all
 top-level components render, and those whose HTML changed are sent.
 
+## The connection
+
+A component or a `#[Scoped]` service can inject `Waypoint\Live\Connection`: the request the WebSocket came in
+with, its cookies, and `$request->jwt` as the app's middlewares left it. After a reconnect it is the new
+connection's request. `navigate('/path')` sends the browser to another page of the site once the action is
+done, for example after a login. Only a path of the site is a destination, never another site.
+
+```php
+#[Inject]
+public Connection $connection;
+
+public function logout(): void
+{
+    $this->sessions->end($this->connection->request);
+    $this->connection->navigate('/login');
+}
+```
+
+Live actions need no CSRF token: the WebSocket only connects from the site's own pages (its `Origin` is checked),
+so another site never gets to send an action.
+
 ## DOM patch
 
 The client patches each render into the page instead of replacing it. Siblings are matched by key and moved,

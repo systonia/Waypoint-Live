@@ -125,7 +125,7 @@ final class LivePlugin extends PluginBase implements ViewHelper, ClientAsset, Re
         $selectors = implode('|', array_map(static fn (string $s) => preg_quote($s, '/'), array_keys($this->components)));
         $res->mapBody(fn (string $body): string => (string) preg_replace_callback(
             '/<(' . $selectors . ')((?:\s+[A-Za-z_][\w.:-]*="[^"]*")*)\s*(?:\/>|>\s*<\/\1>)/',
-            function (array $m): string {
+            function (array $m) use ($req): string {
                 preg_match_all('/\s+([A-Za-z_][\w.:-]*)="([^"]*)"/', $m[2], $attributes, PREG_SET_ORDER);
                 $inputs = [];
                 $rest = '';
@@ -136,7 +136,7 @@ final class LivePlugin extends PluginBase implements ViewHelper, ClientAsset, Re
                         $rest .= $attribute;
                     }
                 }
-                return Circuit::page($this, $m[1], $inputs, $rest);
+                return Circuit::page($this, $m[1], $inputs, $rest, $req);
             },
             $body,
         ));

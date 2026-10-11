@@ -39,6 +39,12 @@ final class Scope extends Container
         return $service;
     }
 
+    /** @internal A scoped service the circuit creates itself, such as its Connection. */
+    public function put(object $service): void
+    {
+        $this->scoped[$service::class] = $service;
+    }
+
     /** PropertyInjector asks this before get(): the app's services count, constructor arguments or not. */
     public function has(string $class): bool
     {

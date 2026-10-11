@@ -87,6 +87,9 @@ const $ = (id) => document.getElementById(id);
   $('mix').requestSubmit();
   await new Promise((r) => setTimeout(r, 100));
   check('name and name[] make one list', JSON.stringify(sent.find((m) => m.m === 'mix')?.a[0]) === '{"tags":["a","b"]}');
+  // The server sends the browser elsewhere
+  server({ t: 'navigate', url: '#navigated' });
+  check('navigate loads the url', location.hash === '#navigated');
   $('out').textContent = results.join('\n');
 })();
 </script>

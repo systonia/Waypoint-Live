@@ -8,7 +8,7 @@ use LogicException;
 use ReflectionMethod;
 use ReflectionObject;
 use Throwable;
-use Waypoint\Http\UploadedFile;
+use Waypoint\Http\{Request, UploadedFile};
 
 /**
  * One browser tab's components on the server, for as long as its WebSocket is open. Messages from the browser
@@ -36,14 +36,19 @@ final class Circuit
     /** This tab's #[Scoped] services; shared by all its components. */
     private Scope $services;
 
+    private Connection $connection;
+
     /**
      * @param Closure(string): void $send Writes one message to the browser.
      * @param Closure(Throwable): void $report Logs a failure.
      * @param (Closure(float, Closure(): void): (Closure(): void))|null $every Starts a timer and returns its cancel; Tenma's setInterval by default.
+     * @param Request|null $request The request the connection came in with; components reach it through Connection.
      */
-    public function __construct(private LivePlugin $live, private Closure $send, private Closure $report, ?Closure $every = null)
+    public function __construct(private LivePlugin $live, private Closure $send, private Closure $report, ?Closure $every = null, ?Request $request = null)
     {
         $this->services = $live->scope();
+        $this->connection = new Connection($request ?? Request::fromParts('GET', '/'));
+        $this->services->put($this->connection);
         $this->every = $every ?? static fn (float $seconds, Closure $work): Closure => \Tenma::setInterval($work, $seconds)->cancel(...);
     }
 
@@ -53,13 +58,14 @@ final class Circuit
      *
      * @param array<string, mixed> $inputs
      * @param string $attributes Further attributes for the tag, already escaped: ' class="big"'
+     * @param Request|null $request The page's request, for components that read it through Connection
      */
-    public static function page(LivePlugin $live, string $selector, array $inputs, string $attributes = ''): string
+    public static function page(LivePlugin $live, string $selector, array $inputs, string $attributes = '', ?Request $request = null): string
     {
         $circuit = new self($live, static function (): void {
         }, static function (): void {
         }, static fn (): Closure => static function (): void {
-        });
+        }, $request);
         [$component, $template] = $live->create($selector, $inputs, $circuit->services);
         return sprintf(
             '<%1$s%4$s data-live data-inputs="%2$s">%3$s</%1$s>',
@@ -86,6 +92,16 @@ final class Circuit
         } catch (Throwable $e) {
             ($this->report)($e);
             ($this->send)(json_encode(['id' => $id, 'error' => true], JSON_THROW_ON_ERROR));
+        }
+        $this->navigate();
+    }
+
+    /** An action asked for another page: the browser goes there. */
+    private function navigate(): void
+    {
+        $url = $this->connection->takeNavigation();
+        if ($url !== null) {
+            ($this->send)(json_encode(['t' => 'navigate', 'url' => $url], JSON_THROW_ON_ERROR));
         }
     }
 
@@ -121,9 +137,12 @@ final class Circuit
      *
      * @param Closure(string): void $send
      */
-    public function reattach(Closure $send): void
+    public function reattach(Closure $send, ?Request $request = null): void
     {
         $this->send = $send;
+        if ($request !== null) {
+            $this->connection->reconnected($request);
+        }
         foreach ($this->nodes as $node) {
             $this->startTimers($node);
         }
@@ -234,6 +253,7 @@ final class Circuit
                     } catch (Throwable $e) {
                         ($this->report)($e);
                     }
+                    $this->navigate();
                 });
             }
         }

@@ -8,7 +8,7 @@ use Throwable;
 use Waypoint\Container;
 use Waypoint\Http\{Request, Response};
 use Waypoint\Live\{Circuit, LivePlugin};
-use Waypoint\Live\Tests\Fixtures\{BasketBadge, BasketButton, Counter, Fragile, Item, ItemList, Label, Uploader};
+use Waypoint\Live\Tests\Fixtures\{BasketBadge, BasketButton, Counter, Fragile, Item, ItemList, Label, Uploader, Visitor};
 
 final class CircuitTest extends TestCase
 {
@@ -21,7 +21,7 @@ final class CircuitTest extends TestCase
     /** @var list<array{float, Closure, bool}> started timers: seconds, work, cancelled */
     private array $timers = [];
 
-    private function circuit(): Circuit
+    private function circuit(?Request $request = null): Circuit
     {
         return new Circuit(
             $this->plugin(),
@@ -38,12 +38,13 @@ final class CircuitTest extends TestCase
                     $this->timers[$i][2] = true;
                 };
             },
+            $request,
         );
     }
 
     private function plugin(): LivePlugin
     {
-        $live = new LivePlugin([Counter::class, ItemList::class, Item::class, BasketButton::class, BasketBadge::class, Fragile::class, Uploader::class]);
+        $live = new LivePlugin([Counter::class, ItemList::class, Item::class, BasketButton::class, BasketBadge::class, Fragile::class, Uploader::class, Visitor::class]);
         $container = new Container();
         $container->set(new Label('fine'));
         $live->boot($container);
@@ -266,5 +267,31 @@ final class CircuitTest extends TestCase
         $many = array_fill(0, 21, $file('x.jpg', 'x'));
         $circuit->handle($this->message(['t' => 'call', 'id' => 'c0', 'm' => 'save', 'a' => [['title' => 'Too many', 'photos' => $many]]]));
         $this->assertSame(['id' => 'c0', 'error' => true], $this->sent[5]);
+    }
+
+    public function testAComponentSeesItsConnectionsRequestAndSendsTheBrowserElsewhere(): void
+    {
+        $circuit = $this->circuit(Request::fromParts('GET', '/_live', cookies: ['who' => 'ada']));
+        $circuit->handle($this->message(['t' => 'mount', 'id' => 'c0', 'c' => 'test-visitor', 'p' => []]));
+        $this->assertStringStartsWith('<p>ada</p>', $this->sent[0]['html']);
+
+        $circuit->handle($this->message(['t' => 'call', 'id' => 'c0', 'm' => 'leave', 'a' => ['/admin']]));
+        $this->assertSame(['t' => 'navigate', 'url' => '/admin'], end($this->sent));
+
+        // Another site is no destination
+        $this->sent = [];
+        $circuit->handle($this->message(['t' => 'call', 'id' => 'c0', 'm' => 'leave', 'a' => ['//evil.test']]));
+        $this->assertSame([['id' => 'c0', 'error' => true]], $this->sent);
+
+        // A reconnect brings the new connection's request
+        $circuit->detach();
+        $resent = [];
+        $circuit->reattach(function (string $message) use (&$resent): void {
+            $resent[] = json_decode($message, true);
+        }, Request::fromParts('GET', '/_live', cookies: ['who' => 'bo']));
+        $this->assertStringStartsWith('<p>bo</p>', $resent[0]['html']);
+
+        // And the page's own render reads the page's request
+        $this->assertStringContainsString('<p>cy</p>', Circuit::page($this->plugin(), 'test-visitor', [], '', Request::fromParts('GET', '/', cookies: ['who' => 'cy'])));
     }
 }
