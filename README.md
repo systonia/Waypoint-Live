@@ -133,7 +133,24 @@ public function say(string $message): void
 ```
 
 Outside a component, `$app->get(Broadcast::class)`. A tab whose connection dropped renders when it comes back.
-Per worker: with `--workers` above 1, tabs on other workers don't see the change.
+
+With several workers, `changed()` goes out through `Tenma::publish()`: every worker renders its tabs, with
+`tenma --pubsub redis://host` every process on that Redis too. Each worker has its own memory, though: that is
+enough for state in Postgres or Redis. State in memory goes to every worker with its own message, and each worker
+renders its tabs once it has it, with `changedHere()`:
+
+```php
+// At startup: runs in every worker
+Tenma::subscribe('chat', function (string $message) use ($room, $broadcast) {
+    $room->messages[] = $message;
+    $broadcast->changedHere();
+});
+
+// In the action, instead of changed()
+Tenma::publish('chat', $message);
+```
+
+Under a Tenma without `Tenma::publish()`, `changed()` only renders the tabs of the own worker.
 
 ## Components of a plugin
 
