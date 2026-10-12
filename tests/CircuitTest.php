@@ -8,7 +8,7 @@ use Throwable;
 use Waypoint\Container;
 use Waypoint\Http\{Request, Response};
 use Waypoint\Live\{Circuit, Components, LivePlugin};
-use Waypoint\Live\Tests\Fixtures\{BasketBadge, BasketButton, Counter, Fragile, Item, ItemList, Label, Bouncer, Uploader, Visitor};
+use Waypoint\Live\Tests\Fixtures\{BasketBadge, BasketButton, Chat, Counter, Fragile, Item, ItemList, Label, Bouncer, Room, Uploader, Visitor};
 
 final class CircuitTest extends TestCase
 {
@@ -21,10 +21,10 @@ final class CircuitTest extends TestCase
     /** @var list<array{float, Closure, bool}> started timers: seconds, work, cancelled */
     private array $timers = [];
 
-    private function circuit(?Request $request = null): Circuit
+    private function circuit(?Request $request = null, ?LivePlugin $live = null): Circuit
     {
         return new Circuit(
-            $this->plugin(),
+            $live ?? $this->plugin(),
             function (string $message): void {
                 $this->sent[] = json_decode($message, true);
             },
@@ -44,9 +44,10 @@ final class CircuitTest extends TestCase
 
     private function plugin(): LivePlugin
     {
-        $live = new LivePlugin([Counter::class, ItemList::class, Item::class, BasketButton::class, BasketBadge::class, Fragile::class, Uploader::class, Visitor::class, Bouncer::class]);
+        $live = new LivePlugin([Counter::class, ItemList::class, Item::class, BasketButton::class, BasketBadge::class, Fragile::class, Uploader::class, Visitor::class, Bouncer::class, Chat::class]);
         $container = new Container();
         $container->set(new Label('fine'));
+        $container->set(new Room());
         $live->boot($container);
         return $live;
     }
@@ -244,6 +245,25 @@ final class CircuitTest extends TestCase
         $this->sent = [];
         $other->handle($this->message(['t' => 'call', 'id' => 'c0', 'm' => 'add', 'a' => []]));
         $this->assertSame([['id' => 'c1', 'html' => "<output>1</output>\n"]], $this->sent);
+    }
+
+    public function testABroadcastRendersEveryConnectedTab(): void
+    {
+        $live = $this->plugin();
+        $tab = $this->circuit(null, $live);
+        $tab->handle($this->message(['t' => 'mount', 'id' => 'c0', 'c' => 'test-chat', 'p' => []]));
+        $other = $this->circuit(null, $live);
+        $other->handle($this->message(['t' => 'mount', 'id' => 'c0', 'c' => 'test-chat', 'p' => []]));
+        $gone = $this->circuit(null, $live);
+        $gone->handle($this->message(['t' => 'mount', 'id' => 'c0', 'c' => 'test-chat', 'p' => []]));
+        $gone->detach();
+        $this->sent = [];
+
+        // Both connected tabs show the message once; the detached one waits for reattach()
+        $tab->handle($this->message(['t' => 'call', 'id' => 'c0', 'm' => 'say', 'a' => ['hi']]));
+        $html = "<button data-on-click=\"say\" data-arg=\"hi\">say</button>\nhi";
+        $this->assertSame([['id' => 'c0', 'html' => $html], ['id' => 'c0', 'html' => $html]], $this->sent);
+        $this->assertSame([], $this->reported);
     }
 
     public function testFilesFromTheBrowserArriveAsUploadedFiles(): void

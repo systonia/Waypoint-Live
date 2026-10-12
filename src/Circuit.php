@@ -38,6 +38,8 @@ final class Circuit
 
     private Connection $connection;
 
+    private Broadcast $broadcast;
+
     /**
      * @param Closure(string): void $send Writes one message to the browser.
      * @param Closure(Throwable): void $report Logs a failure.
@@ -50,6 +52,8 @@ final class Circuit
         $this->connection = new Connection($request ?? Request::fromParts('GET', '/'));
         $this->services->put($this->connection);
         $this->every = $every ?? static fn (float $seconds, Closure $work): Closure => \Tenma::setInterval($work, $seconds)->cancel(...);
+        $this->broadcast = $this->services->get(Broadcast::class);
+        $this->broadcast->connect($this);
     }
 
     /**
@@ -145,6 +149,7 @@ final class Circuit
         }
         $this->send = static function (): void {
         };
+        $this->broadcast->disconnect($this);
     }
 
     /**
@@ -156,6 +161,7 @@ final class Circuit
     public function reattach(Closure $send, ?Request $request = null): void
     {
         $this->send = $send;
+        $this->broadcast->connect($this);
         if ($request !== null) {
             $this->connection->reconnected($request);
         }
@@ -280,9 +286,13 @@ final class Circuit
      * browser. A child calling back into its parent, or a #[Scoped] service shared with another top-level
      * component, needs no bookkeeping that way.
      *
+     * Broadcast calls it for changes made elsewhere.
+     *
      * ponytail: renders the whole tab on every change; track what each render read once tabs get big
+     *
+     * @internal
      */
-    private function changed(bool $onlyIfChanged = true): void
+    public function changed(bool $onlyIfChanged = true): void
     {
         foreach ($this->nodes as $node) {
             if ($node->root !== null) {

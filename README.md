@@ -115,6 +115,26 @@ a constructor without required arguments; its own `#[Inject]` properties are set
 When an action changes it, every component of the tab that shows it renders again: after a change all
 top-level components render, and those whose HTML changed are sent.
 
+## Changes for every tab
+
+A tab renders after its own actions and timers. State that tabs share through an app-wide service, such as a chat,
+reaches the other tabs with `Broadcast`: `changed()` renders every connected tab, and each sends the
+components whose HTML changed.
+
+```php
+#[Inject]
+public Broadcast $broadcast;
+
+public function say(string $message): void
+{
+    $this->room->messages[] = $message;
+    $this->broadcast->changed();
+}
+```
+
+Outside a component, `$app->get(Broadcast::class)`. A tab whose connection dropped renders when it comes back.
+Per worker: with `--workers` above 1, tabs on other workers don't see the change.
+
 ## Components of a plugin
 
 A plugin that brings live components of its own requires `LivePlugin` and adds them in its `boot()`, the way

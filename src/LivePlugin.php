@@ -46,6 +46,7 @@ final class LivePlugin extends PluginBase implements ViewHelper, ClientAsset, Re
         $this->container = $container;
         $container->set($this);
         $container->set($this->components);
+        $container->set(new Broadcast());
     }
 
     public function classes(): array
