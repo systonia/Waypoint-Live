@@ -104,6 +104,42 @@ final class EditorTest extends TestCase
         ])));
     }
 
+    public function testProblemsInTemplatesWithDirectives(): void
+    {
+        $file = self::FIXTURES . '/Shelf.Template.php';
+        $this->assertSame([], $this->problems($file, (string) file_get_contents($file)));
+        $this->assertSame([
+            '1 error: @foreach has no @endforeach',
+            "2 error: <test-item nme>: 'nme' is not an #[Input] of Item. Did you mean name?",
+            '3 error: data-on-click="pik": Shelf has no method pik(). Did you mean pick()?',
+        ], $this->problems($file, "@foreach (\$this->books as \$book)\n<test-item nme=\"{{ \$book }}\"></test-item>\n<b data-on-click=\"pik\">{{ \$book }}</b>"));
+        // PHP inside {{ }} is checked like PHP in an echo tag
+        $this->assertSame(["2 error: Unmatched ')'"], $this->problems($file, "<p>\n{{ \$this->open) }}</p>"));
+    }
+
+    public function testDirectivesGetTheirColours(): void
+    {
+        $text = "{{-- a\nb --}}\n@if (\$this->open)\n  {{ \$book->title() }} @@\n@endif";
+        $tokens = array_map(
+            static fn (array $t) => "{$t['line']}:{$t['column']} " . substr(explode("\n", $text)[$t['line'] - 1], $t['column'], $t['length']) . " {$t['type']}",
+            $this->editor()->tokens(self::FIXTURES . '/Shelf.Template.php', $text),
+        );
+        $this->assertSame([
+            '1:0 {{-- a comment',
+            '2:0 b --}} comment',
+            '3:0 @if keyword',
+            '3:5 $this variable',
+            '3:12 open property',
+            '4:2 {{ keyword',
+            '4:20 }} keyword',
+            '4:5 $book variable',
+            '4:12 title method',
+            '5:0 @endif keyword',
+        ], array_values(array_filter($tokens, static fn (string $t) => !str_ends_with($t, ' operator'))));
+        $this->assertContains('4:10 -> operator', $tokens);
+        $this->assertSame([], $this->editor()->tokens(self::FIXTURES . '/view.php', $text));
+    }
+
     public function testProblemsWithPhp(): void
     {
         $this->assertSame(

@@ -17,5 +17,10 @@ if (!interface_exists(\Tenma\Lsp\Provider::class)) {
 
             public function diagnostics(string $file, string $text): array;
         }
+
+        interface Tokens
+        {
+            public function tokens(string $file, string $text): array;
+        }
         PHP);
 }

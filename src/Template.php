@@ -12,7 +12,7 @@ use TypeError;
  * `<?= $this->count ?>` is HTML-escaped, `<?php echo $html ?>` stays raw; control flow works as in any view.
  * `<app-row name="<?= $city ?>" key="<?= $city ?>"></app-row>` places a child component: a value that is a
  * single `<?= expr ?>` passes the value itself (an int, an object, a closure), anything else passes a string.
- * `<?php /** @var \App\Counter $this *\/ ?>` on the first line lets the IDE follow `$this` into the component.
+ * Directives in the Blade style (`{{ }}`, `@foreach`, `@if`, see Directives) become such PHP first.
  * Compiled once when the plugin starts; the methods its `data-on-*` attributes name are the only ones the
  * browser can call.
  */
@@ -32,7 +32,11 @@ final class Template
         }
         preg_match_all('/\bdata-on-[a-z]+="([A-Za-z_]\w*)"/', $source, $named);
         $this->actions = array_values(array_unique($named[1]));
-        $this->code = self::compile($source, $selectors);
+        try {
+            $this->code = self::compile($source, $selectors);
+        } catch (InvalidArgumentException $e) {
+            throw new InvalidArgumentException("Template '$path', " . $e->getMessage(), 0, $e);
+        }
     }
 
     /**
@@ -42,7 +46,13 @@ final class Template
      */
     public static function compile(string $source, array $selectors): string
     {
-        return '?>' . self::escapeEchoes(self::children($source, $selectors));
+        $directives = new Directives($source);
+        foreach ($directives->problems as $problem) {
+            if ($problem['severity'] === 'error') {
+                throw new InvalidArgumentException("line {$problem['line']}: {$problem['message']}");
+            }
+        }
+        return '?>' . self::escapeEchoes(self::children($directives->compile(), $selectors));
     }
 
     /** @param Closure(string, array<string, mixed>): string $child Renders a child component's tag. */

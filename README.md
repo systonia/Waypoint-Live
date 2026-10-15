@@ -72,6 +72,35 @@ plugin starts.
 `<?= $value ?>` escapes every value except a `Waypoint\Live\Html`, which carries markup that was built safely
 (another template's output, say) and is printed as it is.
 
+### Directives
+
+Templates also take directives in the style of Blade, mixed with plain PHP as you like:
+
+```
+{{-- every product, or a note --}}
+@foreach ($this->products as $product)
+    <li data-key="{{ $product->id }}">
+        {{ $product->name }}
+        @if ($product->stock === 0)
+            <em>sold out</em>
+        @elseif ($product->stock < 5)
+            <em>few left</em>
+        @else
+            {!! $this->badge !!}
+        @endif
+    </li>
+@endforeach
+<app-cart-row key="{{ $row->id }}" pick="{{ $this->pick(...) }}"></app-cart-row>
+```
+
+- `{{ expr }}` prints escaped, as `<?= ?>`; a lone `{{ expr }}` in a child tag's attribute passes the value itself.
+  `{!! expr !!}` prints raw, `{{-- --}}` is a comment.
+- `@if (...)`, `@elseif (...)`, `@else`, `@endif`, `@foreach (...)`, `@endforeach`. `@@` prints an `@`.
+- A directive starts a line or follows whitespace or `>`, so `info@example.com`, `@media` in CSS and
+  `@click` stay text. Inside `<?php ?>` nothing is a directive.
+- A block that does not close, or closes another one, keeps the template from compiling, with its line. In the
+  editor these show while typing; `@forech` gets a hint and stays text.
+
 ## Nested components
 
 A template places other components by their tag:
@@ -290,9 +319,12 @@ gives a template:
 - `data-on-click="` completed with the methods the browser may call; F12 to the method
 - `<app-` completed with the selectors, the attributes of a child tag with its `#[Input]` properties; F12 from a
   tag to its class
+- the variable of a loop over `$this->items` completed with the members of the element type that the
+  property's `@var list<Item>` (or `Item[]`, `array<int, Item>`) names
+- directives and the PHP inside them coloured, which the editor's PHP grammar sees as text
 - while typing: an action the component lacks or cannot be called (`Did you mean add()?`), an attribute that is
   no input of the child, a child tag the compiler would leave as it is, a `//` comment inside `<?= ?>`, PHP that
-  does not parse, each at its line
+  does not parse, directives that do not close, each at its line
 
 A changed component is seen once it is saved.
 

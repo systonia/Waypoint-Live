@@ -8,7 +8,8 @@ use ReflectionClass;
 /**
  * @internal Mistakes in a template that the compiler lets through and that would fail only later, at a
  * click or a render, or not at all: an action the component lacks, an attribute that is no input of the
- * child, a child tag the page would leave unexpanded, a `//` comment in `<?= ?>`, PHP that does not parse.
+ * child, a child tag the page would leave unexpanded, a `//` comment in `<?= ?>`, PHP that does not parse,
+ * directives that do not close or are misspelt.
  * The editor shows them while the template is typed.
  */
 final class Problems
@@ -20,13 +21,19 @@ final class Problems
      */
     public static function inTemplate(string $source, string $class, array $components): array
     {
+        // Directives first: what they become is plain PHP on the same lines, for every other check
+        $directives = new Directives($source);
+        $php = $directives->compile();
         // A line comment in an echo tag also breaks the syntax: one message for it is enough
-        $comments = self::comments($source);
-        return [
-            ...($comments !== [] ? $comments : self::syntax($source, array_keys($components))),
+        $comments = self::comments($php);
+        $problems = [
+            ...$directives->problems,
+            ...($comments !== [] || in_array('error', array_column($directives->problems, 'severity'), true) ? $comments : self::syntax($source, array_keys($components))),
             ...self::actions($source, $class),
-            ...self::children($source, $components),
+            ...self::children($php, $components),
         ];
+        usort($problems, static fn (array $a, array $b) => $a['line'] <=> $b['line']);
+        return $problems;
     }
 
     /**

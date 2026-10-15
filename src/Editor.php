@@ -8,19 +8,23 @@ use RecursiveIteratorIterator;
 use ReflectionClass;
 use ReflectionMethod;
 use SplFileInfo;
-use Tenma\Lsp\Provider;
+use Tenma\Lsp\{Provider, Tokens};
 use Throwable;
 
 /**
  * Live in the editor, through `tenma lsp` (composer.json names it under extra.tenma.lsp): `$this` in a
  * template is its component, `data-on-click="` completes the component's public methods, `<app-` the
  * selectors, a child tag its #[Input] properties. F12 leads from a tag to its class and from an action
- * to its method. Problems shows what Problems finds while the template is typed.
+ * to its method. Problems shows what Problems finds while the template is typed, and directives get their
+ * colours: the editor's PHP grammar sees them as text.
  *
  * The components are the classes with #[Component] below the project's autoload and autoload-dev
  * directories (PSR-4 and classmap), not only those listed in a LivePlugin: the editor runs no app.
+ *
+ * @phpstan-type TokenType 'keyword'|'comment'|'variable'|'property'|'method'|'function'|'class'|'string'|'number'|'operator'
+ * @phpstan-type Token array{line: int, column: int, length: int, type: TokenType}
  */
-final class Editor implements Provider
+final class Editor implements Provider, Tokens
 {
     /** @var array<string, array{class-string, string}>|null selector => class, template file */
     private ?array $components = null;
@@ -102,6 +106,110 @@ final class Editor implements Provider
             return [];
         }
         return Problems::inTemplate($text, $class, array_map(static fn (array $component) => $component[0], $this->components()));
+    }
+
+    /** @return list<Token> */
+    public function tokens(string $file, string $text): array
+    {
+        if ($this->templateOf($file) === null) {
+            return [];
+        }
+        $directives = new Directives($text);
+        $tokens = [];
+        foreach ($directives->found as $found) {
+            if ($found['kind'] === 'at') {
+                continue;
+            }
+            if ($found['kind'] === 'comment' || $found['kind'] === 'broken') {
+                self::token($tokens, $text, $found['start'], $found['end'], $found['kind'] === 'comment' ? 'comment' : 'keyword');
+                continue;
+            }
+            [$from, $to] = $found['expression'] ?? [$found['end'], $found['end']];
+            if ($found['kind'] === 'directive') {
+                self::token($tokens, $text, $found['start'], $found['start'] + 1 + strlen($found['name'] ?? ''), 'keyword');
+            } else {
+                // {{ and }}, {!! and !!}
+                self::token($tokens, $text, $found['start'], $from, 'keyword');
+                self::token($tokens, $text, $to, $found['end'], 'keyword');
+            }
+            self::php($tokens, $text, $from, $to);
+        }
+        return $tokens;
+    }
+
+    /**
+     * PHP's own tokens of an expression: variables, members, calls, classes, strings, numbers, keywords.
+     *
+     * @param list<Token> $tokens
+     */
+    private static function php(array &$tokens, string $text, int $from, int $to): void
+    {
+        $php = token_get_all('<?php ' . substr($text, $from, $to - $from));
+        $at = $from - 6;
+        foreach ($php as $i => $token) {
+            $length = strlen(is_array($token) ? $token[1] : $token);
+            if (is_array($token)) {
+                $type = match ($token[0]) {
+                    T_VARIABLE => 'variable',
+                    T_CONSTANT_ENCAPSED_STRING, T_ENCAPSED_AND_WHITESPACE => 'string',
+                    T_LNUMBER, T_DNUMBER => 'number',
+                    T_NAME_QUALIFIED, T_NAME_FULLY_QUALIFIED => 'class',
+                    T_STRING => self::name($php, $i),
+                    T_OPEN_TAG, T_WHITESPACE, T_COMMENT, T_DOC_COMMENT => null,
+                    // as, instanceof, fn, match, new, ...: every other word
+                    default => ctype_alpha($token[1]) ? 'keyword' : 'operator',
+                };
+                if ($type !== null) {
+                    self::token($tokens, $text, $at, $at + $length, $type);
+                }
+            }
+            $at += $length;
+        }
+    }
+
+    /**
+     * What a bare name is by what surrounds it: `->name(` a method, `->name` a property, `name(` a function.
+     *
+     * @param list<string|array{int, string, int}> $php
+     * @return 'method'|'property'|'keyword'|'function'|'class'
+     */
+    private static function name(array $php, int $i): string
+    {
+        $neighbour = static function (int $step) use ($php, $i): string {
+            for ($j = $i + $step; isset($php[$j]); $j += $step) {
+                if (!is_array($php[$j]) || $php[$j][0] !== T_WHITESPACE) {
+                    return is_array($php[$j]) ? $php[$j][1] : $php[$j];
+                }
+            }
+            return '';
+        };
+        $call = $neighbour(1) === '(';
+        return match (true) {
+            in_array($neighbour(-1), ['->', '?->', '::'], true) => $call ? 'method' : 'property',
+            in_array(strtolower(is_array($php[$i]) ? $php[$i][1] : ''), ['true', 'false', 'null'], true) => 'keyword',
+            $call => 'function',
+            default => 'class',
+        };
+    }
+
+    /**
+     * One token per line it covers: editors take no token across lines.
+     *
+     * @param list<Token> $tokens
+     * @param TokenType $type
+     */
+    private static function token(array &$tokens, string $text, int $start, int $end, string $type): void
+    {
+        while ($start < $end) {
+            $newlineBefore = strrpos(substr($text, 0, $start), "\n");
+            $lineStart = $newlineBefore === false ? 0 : $newlineBefore + 1;
+            $newline = strpos($text, "\n", $start);
+            $stop = $newline === false ? $end : min($end, $newline);
+            if ($stop > $start) {
+                $tokens[] = ['line' => substr_count($text, "\n", 0, $start) + 1, 'column' => $start - $lineStart, 'length' => $stop - $start, 'type' => $type];
+            }
+            $start = $stop + 1;
+        }
     }
 
     /** @return class-string|null The component whose template $file is */
