@@ -4,7 +4,10 @@ namespace Demo;
 
 use Waypoint\Live\{Component, Input};
 
-#[Component(selector: 'app-counter', template: 'Counter.Template.php')]
+#[Component(
+    selector: 'app-counter',
+    template: 'Counter.Template.php'
+)]
 final class Counter
 {
     #[Input]

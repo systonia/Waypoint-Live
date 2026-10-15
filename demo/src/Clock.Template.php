@@ -1,3 +1,1 @@
-<?php /** @var \Demo\Clock $this */ ?>
-
-<time><?= $this->time ?></time>
+<time>{{ $this->time }}</time>
