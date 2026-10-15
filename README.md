@@ -443,8 +443,10 @@ In production none of this happens: the browser only learns that a component fai
 - Every change renders every top-level component of the tab; fine for small pages, not for big ones.
 - Tags need attributes in double quotes and an empty body (no content projection). In a Waypoint view the
   rendered HTML page is searched for them. An attribute that is no `#[Input]` (`class`, `id`) stays on the
-  tag; an input arrives as a string (`count="3"` still fills an `int`), so a `bool`, an array or an object
-  needs `$this->live()`. A tag inside `<script>`, `<textarea>` or an HTML comment is expanded too.
+  tag; an input arrives as a string (`count="3"` still fills an `int`), so a `bool` or an array needs
+  `$this->live()`. A page's inputs travel through the browser and back, so they are JSON values only: an object
+  is refused, pass its ID and load it in the component. A child placed by a template gets any value, objects
+  and closures included. A tag inside `<script>`, `<textarea>` or an HTML comment is expanded too.
 - At most 50 top-level components per tab.
 - The circuit's token isn't tied to the session or the user of the connection that created it: a tab left
   open across a logout and a login of someone else reconnects to the old components.

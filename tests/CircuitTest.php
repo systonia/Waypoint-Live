@@ -320,6 +320,12 @@ final class CircuitTest extends TestCase
         }
     }
 
+    public function testAPageRefusesInputsThatCannotTravelThroughTheBrowser(): void
+    {
+        $this->expectExceptionMessage("<test-counter> input 'count': a page passes numbers, strings, booleans, null and arrays of them, not stdClass");
+        Circuit::page($this->plugin(), 'test-counter', ['count' => new \stdClass()]);
+    }
+
     public function testThePageRendersChildrenWithRelativeIds(): void
     {
         $html = Circuit::page($this->plugin(), 'test-list', []);

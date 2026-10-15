@@ -88,6 +88,12 @@ final class Circuit
      */
     public static function page(LivePlugin $live, string $selector, array $inputs, string $attributes = '', ?Request $request = null): string
     {
+        // The inputs go into the page and come back from the browser when it connects: only what survives JSON
+        foreach ($inputs as $name => $value) {
+            if (!self::plain($value)) {
+                throw new InvalidArgumentException("<$selector> input '$name': a page passes numbers, strings, booleans, null and arrays of them, not " . get_debug_type($value) . '. The browser sends them back on connect; pass an ID and let the component load the object');
+            }
+        }
         $circuit = new self($live, static function (): void {
         }, static function (): void {
         }, static fn (): Closure => static function (): void {
