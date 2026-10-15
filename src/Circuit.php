@@ -541,6 +541,8 @@ final class Circuit
             try {
                 $this->render($node, $onlyIfChanged);
             } catch (Throwable $e) {
+                // Its next good render goes to the browser even if its HTML is the same as before: that clears the error
+                $node->sent = null;
                 $this->failed($node->id, $e, $node->selector);
             }
         }

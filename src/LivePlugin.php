@@ -72,7 +72,9 @@ final class LivePlugin extends PluginBase implements ViewHelper, ClientAsset, Re
             // ponytail: polls 4 times a second; a watcher from Tenma once a second user needs one
             $checked = false;
             \Tenma::setInterval(function () use ($broadcast, $logger, &$checked): void {
-                $changed = $this->components->reload(function (string $file, ?Throwable $e) use ($broadcast, $logger): void {
+                $saved = false;
+                $changed = $this->components->reload(function (string $file, ?Throwable $e) use ($broadcast, $logger, &$saved): void {
+                    $saved = true;
                     if ($e !== null) {
                         $logger->error('live: ' . $e->getMessage(), ['exception' => $e]);
                     }
@@ -83,7 +85,7 @@ final class LivePlugin extends PluginBase implements ViewHelper, ClientAsset, Re
                     $broadcast->changedHere();
                 }
                 // Once the plugins have added theirs, and after every saved template
-                if (!$checked || $changed) {
+                if (!$checked || $saved) {
                     $checked = true;
                     $this->check($logger);
                 }

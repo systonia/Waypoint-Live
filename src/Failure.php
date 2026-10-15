@@ -35,8 +35,8 @@ final class Failure
                 'call' => ($frame['class'] ?? '') . ($frame['type'] ?? '') . $frame['function'] . '()',
                 'file' => $frame['file'],
                 'line' => $frame['line'] ?? 0,
-                // Folded in the overlay: the app's frames are what matters
-                'vendor' => str_contains($frame['file'], '/vendor/') || str_starts_with($frame['file'], __DIR__ . '/'),
+                // Folded in the overlay: the app's frames are what matters, not Live's, the packages' or Tenma's (tenma:stdlib)
+                'vendor' => str_contains($frame['file'], '/vendor/') || str_starts_with($frame['file'], __DIR__ . '/') || !str_starts_with($frame['file'], '/'),
             ];
         }
         return [

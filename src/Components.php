@@ -116,17 +116,19 @@ final class Components
      */
     public function reload(Closure $report): bool
     {
-        if ($this->compiled === null) {
-            return false;
-        }
         $changed = false;
         foreach ($this->found as $selector => [$class, $path]) {
             // Content, not the time: an editor that saves without a change changes nothing
             $hash = is_file($path) ? (string) md5_file($path) : '';
-            if ($hash === $this->hashes[$selector]) {
+            if ($hash === ($this->hashes[$selector] ??= $hash)) {
                 continue;
             }
             $this->hashes[$selector] = $hash;
+            // Not compiled yet, or not at all after a mistake: the next page compiles what is there then
+            if ($this->compiled === null) {
+                $report($path, null);
+                continue;
+            }
             try {
                 $this->compiled[$selector] = [$class, new Template($path, $this->selectors())];
                 $changed = true;
