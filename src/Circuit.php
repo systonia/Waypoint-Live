@@ -132,6 +132,18 @@ final class Circuit
         return is_array($jwt) ? $jwt['sub'] ?? null : (is_object($jwt) ? $jwt->sub ?? null : null);
     }
 
+    /** @internal The tab's #[Scoped] services: Testing\Tab puts its fakes there */
+    public function services(): Scope
+    {
+        return $this->services;
+    }
+
+    /** @internal A component of the tab by ID, for Testing\Mounted */
+    public function byId(string $id): ?Node
+    {
+        return $this->nodes[$id] ?? null;
+    }
+
     public function isEmpty(): bool
     {
         return $this->nodes === [];

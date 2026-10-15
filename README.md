@@ -340,6 +340,37 @@ gives a template:
 
 A changed component is seen once it is saved.
 
+## Testing
+
+`Waypoint\Live\Testing\Tab` is a browser tab without a browser, for the app's PHPUnit tests: the components get
+the app's services, and every event goes through the template the way the browser sends it, so a test also
+proves that the template wires the method up.
+
+```php
+use Waypoint\Live\Testing\Tab;
+
+$tab = Tab::for($app);                              // after $app->attach()
+$counter = $tab->mount('app-counter', ['count' => 1]);
+
+$counter->click('increment')->assertSee('2');      // the element whose data-on-click names the method
+$counter->click('button.reset');                   // or a CSS selector; its data-arg goes along
+$counter->input('#search', 'Ber');                 // data-on-input, without the wait
+$counter->change('#agree', true);
+$counter->submit('form', ['title' => 'Trip']);
+$counter->upload('#photo', 'a.jpg', $bytes, 'image/jpeg');
+$tab->advance(1.0);                                // #[Every] timers run on fake time
+
+$counter->html();                                  // what the browser has
+$counter->component();                             // the object, for its state
+$counter->find('app-city-row', key: 'Berlin');     // a child, with the same methods
+$tab->assertNavigatedTo('/login');
+Tab::page($app, 'app-counter', ['count' => 1]);    // the HTML before any connection
+```
+
+`$tab->with($fake)` puts a service into the tab before the first `mount()`, in place of a `#[Scoped]` one. An
+error that the browser would only see as `data-live-error` fails the test with its own stack. Two tabs of one
+app share its services: a `Broadcast` in one renders the other.
+
 ## Development
 
 With `APP_ENV=development` (Waypoint's `Environment::isDev()`) and `tenma --watch`:
