@@ -166,6 +166,20 @@ final class CircuitTest extends TestCase
         $this->assertSame([], $failures->getValue($live));
     }
 
+    public function testADevWarningIsLoggedOncePerKindThoughItsNumbersChange(): void
+    {
+        // The logger writes through the app
+        \Waypoint\Waypoint::create();
+        try {
+            $live = $this->plugin(true);
+            $live->notice('call "add" took 51.3 ms', 'slow call "add"');
+            $live->notice('call "add" took 77.9 ms', 'slow call "add"');
+            $this->assertCount(1, (new \ReflectionProperty($live, 'warned'))->getValue($live));
+        } finally {
+            \Waypoint\Waypoint::reset();
+        }
+    }
+
     public function testChildrenGetIdsKeepTheirStateAndCallBackIntoTheParent(): void
     {
         $circuit = $this->circuit();

@@ -157,29 +157,30 @@ final class Circuit
             return;
         }
         $ms = round((hrtime(true) - $this->started) / 1e6, 2);
+        // By what they are about: the log gets each once, though the numbers in them change
         $warnings = [];
         if ($ms > self::SLOW_MS && $renders !== []) {
-            $warnings[] = "$this->cause took $ms ms and rendered " . count($renders) . ' components: the whole tab renders on every change';
+            $warnings["slow $this->cause"] = "$this->cause took $ms ms and rendered " . count($renders) . ' components: the whole tab renders on every change';
         }
         foreach ($renders as [, $selector, , $bytes]) {
             if ($bytes > self::BIG_BYTES) {
-                $warnings[] = "<$selector> sent " . round($bytes / 1024) . ' KB in one message: a list without paging?';
+                $warnings["big $selector"] = "<$selector> sent " . round($bytes / 1024) . ' KB in one message: a list without paging?';
             }
         }
         if (count($this->nodes) > self::MANY_COMPONENTS) {
-            $warnings[] = count($this->nodes) . ' components in this tab, at most ' . self::MAX_COMPONENTS . ' top-level ones are allowed';
+            $warnings['crowded'] = count($this->nodes) . ' components in this tab, at most ' . self::MAX_COMPONENTS . ' top-level ones are allowed';
         }
         if (str_starts_with($this->cause, '#[Every]') && array_filter($renders, static fn (array $r) => $r[3] !== null) !== []) {
             $now = microtime(true);
             $this->ticks = [...array_filter($this->ticks, static fn (float $at) => $at > $now - 1), $now];
             if (count($this->ticks) > self::TIMER_MESSAGES_PER_SECOND) {
-                $warnings[] = 'timers sent ' . count($this->ticks) . ' renders in one second';
+                $warnings['flooding'] = 'timers sent ' . count($this->ticks) . ' renders in one second';
             }
         }
-        foreach ($warnings as $warning) {
-            $this->live->notice($warning);
+        foreach ($warnings as $kind => $warning) {
+            $this->live->notice($warning, $kind);
         }
-        ($this->send)(json_encode(['t' => 'trace', 'cause' => $this->cause, 'ms' => $ms, 'renders' => $renders, 'warnings' => $warnings], JSON_THROW_ON_ERROR));
+        ($this->send)(json_encode(['t' => 'trace', 'cause' => $this->cause, 'ms' => $ms, 'renders' => $renders, 'warnings' => array_values($warnings)], JSON_THROW_ON_ERROR));
     }
 
     /**
