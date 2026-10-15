@@ -5,10 +5,7 @@ namespace Demo;
 use Waypoint\Live\Component;
 
 /** Child counters with their own state: adding or removing one leaves the others' counts alone. */
-#[Component(
-    selector: 'app-counter-list',
-    template: 'CounterList.Template.php'
-)]
+#[Component]
 final class CounterList
 {
     /** @var list<int> */

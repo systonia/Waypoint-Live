@@ -23,8 +23,8 @@
         "systonia/waypoint-live": "@dev"
     },
     "autoload": {
-        "classmap": [
-            "src/"
-        ]
+        "psr-4": {
+            "Demo\\": "src/"
+        }
     }
 }

@@ -6,8 +6,7 @@ use Waypoint\Attributes\Inject;
 use Waypoint\Live\Component;
 
 #[Component(
-    selector: 'app-cart',
-    template: 'CartSummary.Template.php'
+    selector: 'app-cart'
 )]
 final class CartSummary
 {

@@ -34,16 +34,17 @@ final class Components
             $reflection = new ReflectionClass($class);
             $attribute = ($reflection->getAttributes(Component::class)[0] ?? null)?->newInstance()
                 ?? throw new InvalidArgumentException("$class has no #[Component] attribute");
+            $selector = $attribute->selectorOf($class);
             // A custom element name: it becomes the tag around the component in the page
-            if (preg_match('/^[a-z][a-z0-9]*(-[a-z0-9]+)+$/', $attribute->selector) !== 1 || isset($this->found[$attribute->selector])) {
-                throw new InvalidArgumentException("$class: selector '{$attribute->selector}' must be unique, lowercase and contain a dash");
+            if (preg_match('/^[a-z][a-z0-9]*(-[a-z0-9]+)+$/', $selector) !== 1 || isset($this->found[$selector])) {
+                throw new InvalidArgumentException("$class: selector '$selector' must be unique, lowercase and contain a dash");
             }
-            $template = dirname((string) $reflection->getFileName()) . '/' . $attribute->template;
+            $template = dirname((string) $reflection->getFileName()) . '/' . $attribute->templateOf($class);
             // Missing at boot, not on the first page that would show it
             if (!is_file($template)) {
-                throw new InvalidArgumentException("$class: template '{$attribute->template}' not found next to the class");
+                throw new InvalidArgumentException("$class: template $template not found");
             }
-            $this->found[$attribute->selector] = [$class, $template];
+            $this->found[$selector] = [$class, $template];
         }
         return $this;
     }

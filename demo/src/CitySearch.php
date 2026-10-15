@@ -5,10 +5,7 @@ namespace Demo;
 use Waypoint\Attributes\Inject;
 use Waypoint\Live\Component;
 
-#[Component(
-    selector: 'app-city-search',
-    template: 'CitySearch.Template.php'
-)]
+#[Component]
 final class CitySearch
 {
     #[Inject]

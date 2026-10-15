@@ -478,6 +478,13 @@ final class CircuitTest extends TestCase
         $this->assertStringContainsString('<p>dee</p>', ($live->helpers()['live'])('test-visitor'));
     }
 
+    public function testSelectorAndTemplateFollowTheClassName(): void
+    {
+        $components = (new Components())->add(\Waypoint\Live\Tests\Fixtures\CitySign::class);
+        $this->assertSame(['app-city-sign'], $components->selectors());
+        $this->assertStringEndsWith('/Fixtures/CitySign.Template.php', $components->sources()['app-city-sign'][1]);
+    }
+
     public function testAComponentWithoutItsTemplateFailsAtBoot(): void
     {
         $this->expectException(\InvalidArgumentException::class);

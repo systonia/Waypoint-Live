@@ -8,11 +8,8 @@ component calls services directly; there is no API route and no `fetch()` in bet
 **Status: proof of concept.** Requires Waypoint with `Response::upgrade()` (not released yet) and Tenma.
 
 ```php
-// Counter.Component.php
-#[Component(
-    selector: 'app-counter',
-    template: 'Counter.Template.php'
-)]
+// src/Counter.php
+#[Component]
 final class Counter
 {
     #[Input]
@@ -26,8 +23,8 @@ final class Counter
 ```
 
 ```php
-<!-- Counter.Template.php: $this is the component, <?= ?> escapes -->
-<button data-on-click="increment"><?= $this->count ?></button>
+<!-- src/Counter.Template.php: $this is the component, {{ }} escapes -->
+<button data-on-click="increment">{{ $this->count }}</button>
 ```
 
 ```php
@@ -39,8 +36,15 @@ $app->plugin(new LivePlugin([Counter::class]));   // only listed components can 
 <?= $this->waypointJsTag() ?><?= $this->pluginAssetTags() ?>   <!-- in the layout -->
 ```
 
-The file names `Counter.Component.php` and `Counter.Template.php` don't fit PSR-4: load components with a
-Composer `classmap` (see the demo). The template path is relative to the component's file.
+The selector is `app-` and the class name in kebab case (`CitySearch` is `<app-city-search>`), the template
+`Counter.Template.php` next to the class. Both can be given, the template path relative to the class's file:
+
+```php
+#[Component(
+    selector: 'shop-cart',
+    template: 'templates/Cart.php'
+)]
+```
 
 ## How it works
 
@@ -198,6 +202,9 @@ public function boot(Container $container): void
     $container->get(Components::class)->add(Login::class, Dashboard::class);
 }
 ```
+
+Its components name their selector with a prefix of the plugin (`selector: 'home-login'`), so that they never
+meet an app's `app-` ones.
 
 ## The connection
 
