@@ -124,7 +124,7 @@ final class Template
             if (!is_scalar($value) && $value !== null && !$value instanceof Stringable) {
                 throw new TypeError('A template can only print scalars and Stringable, not ' . get_debug_type($value));
             }
-            $html .= $value instanceof Html ? (string) $value : htmlspecialchars((string) $value, ENT_QUOTES);
+            $html .= $value instanceof Html ? (string) $value : htmlspecialchars((string) $value, ENT_QUOTES | ENT_SUBSTITUTE);
         }
         return $html;
     }
