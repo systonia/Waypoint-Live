@@ -78,7 +78,8 @@ final class Check
         if ($templates === []) {
             return [];
         }
-        $command = [PHP_BINARY, $binary, 'analyse', '--no-progress', '--error-format=json', '--memory-limit=1G'];
+        // Outside the PHP CLI (under Tenma PHP_BINARY is empty) the php on the PATH runs PHPStan
+        $command = [PHP_SAPI === 'cli' ? PHP_BINARY : 'php', $binary, 'analyse', '--no-progress', '--error-format=json', '--memory-limit=1G'];
         $command = [...$command, ...(is_file("$root/phpstan.neon") || is_file("$root/phpstan.neon.dist") ? [] : ['--level=6']), ...array_keys($templates)];
         $process = proc_open($command, [1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes, $root);
         if ($process === false) {
