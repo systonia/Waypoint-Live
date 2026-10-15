@@ -77,6 +77,8 @@ final class LiveController
                 // A circuit without components has nothing to come back to, and must not push real ones out
                 if ($circuit !== null && !$circuit->isEmpty()) {
                     self::park($token, $circuit);
+                } else {
+                    $circuit?->close();
                 }
             }
         }));

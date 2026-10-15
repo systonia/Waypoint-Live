@@ -99,6 +99,16 @@ final class LivePlugin extends PluginBase implements ViewHelper, ClientAsset, Re
         return $this->dev;
     }
 
+    /** @internal In dev: a tab is gone, and what failed in it with it. */
+    public function forget(string $tab): void
+    {
+        $before = count($this->failures);
+        $this->failures = array_filter($this->failures, static fn (string $key) => !str_starts_with($key, "$tab "), ARRAY_FILTER_USE_KEY);
+        if (count($this->failures) !== $before && function_exists('Tenma\\Internal\\diagnostics')) {
+            \Tenma::diagnostics('waypoint-live', array_values($this->failures));
+        }
+    }
+
     /**
      * In dev: what Problems finds in all components goes to the terminal and the editor (Tenma::diagnostics()),
      * or to the log under a Tenma without it.

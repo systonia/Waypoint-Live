@@ -262,9 +262,8 @@ final class Circuit
     /** The browser is gone for good: every timer stops, the components are dropped. */
     public function close(): void
     {
-        foreach ($this->nodes as $node) {
-            $this->live->failed($this->key($node->id), null);
-        }
+        // Also what failed to mount: those components never got a node
+        $this->live->forget('tab ' . spl_object_id($this));
         $this->detach();
         $this->nodes = [];
         $this->roots = 0;

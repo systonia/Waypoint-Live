@@ -154,6 +154,18 @@ final class CircuitTest extends TestCase
         $this->assertSame('second tick', $this->reported[0]->getMessage());
     }
 
+    public function testInDevAFailedMountLeavesTheEditorWithItsTab(): void
+    {
+        $live = $this->plugin(true);
+        $circuit = $this->circuit(live: $live);
+        $circuit->handle($this->message(['t' => 'mount', 'id' => 'c0', 'c' => 'test-fragile', 'p' => ['broken' => true]]));
+        $failures = new \ReflectionProperty($live, 'failures');
+        $this->assertCount(1, $failures->getValue($live));
+        $this->assertTrue($circuit->isEmpty());
+        $circuit->close();
+        $this->assertSame([], $failures->getValue($live));
+    }
+
     public function testChildrenGetIdsKeepTheirStateAndCallBackIntoTheParent(): void
     {
         $circuit = $this->circuit();
