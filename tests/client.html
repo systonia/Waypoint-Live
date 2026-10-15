@@ -106,6 +106,12 @@ const $ = (id) => document.getElementById(id);
   server({ id: 'c1', html: $('fa').closest('[data-live]').innerHTML });
   server({ t: 'problem', key: '/app/src/B.Template.php', error: null });
   check('a render and a fixed template close them', overlay().querySelectorAll('section').length === 0);
+  // In dev the console can ask the server what a component holds, and a trace answers every action
+  sent.length = 0;
+  window.live.inspect('c1');
+  check('live.inspect asks the server', sent.length === 1 && sent[0].t === 'inspect' && sent[0].id === 'c1');
+  server({ t: 'trace', cause: 'call "go"', ms: 1.5, renders: [['c0', 'app-a', 1.2, 300]], warnings: [] });
+  check('a trace changes nothing on the page', overlay().querySelectorAll('section').length === 0);
   // The server sends the browser elsewhere
   server({ t: 'navigate', url: '#navigated' });
   check('navigate loads the url', location.hash === '#navigated');

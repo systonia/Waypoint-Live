@@ -20,6 +20,12 @@
     let boot = null;
     // In dev, how a file opens in the editor
     let editor = null;
+    // localStorage.liveDebug = '1' or ?live-debug: every action in the console, with what it cost
+    let debug = false;
+    try { debug = localStorage.getItem('liveDebug') === '1' || new URLSearchParams(location.search).has('live-debug'); } catch { /* storage blocked */ }
+    // When the oldest unanswered call left, and how long each component's last patch took
+    const calls = [];
+    const patched = new Map();
 
     const send = (message) => {
         if (ready) socket.send(JSON.stringify(message));
@@ -43,6 +49,8 @@
                 }
                 boot = message.boot ?? null;
                 editor = message.editor ?? null;
+                // In dev: live.inspect('c0') prints what the component holds on the server
+                if (boot) window.live = { inspect: (id) => send({ t: 'inspect', id }) };
                 token = message.token;
                 attempt = 0;
                 // A new circuit (first connection, or the old one expired): the components start from the page's
@@ -58,6 +66,23 @@
                 document.documentElement.removeAttribute('data-live-offline');
                 return;
             }
+            if (message.t === 'trace') {
+                const started = message.cause.startsWith('call') ? calls.shift() : undefined;
+                for (const warning of message.warnings) console.warn(`live: ${warning}`);
+                if (!debug) return;
+                const sent = message.renders.filter((r) => r[3] !== null);
+                const bytes = sent.reduce((sum, r) => sum + r[3], 0);
+                console.groupCollapsed(`live ${message.cause} → ${message.ms} ms server${started !== undefined ? ` · ${Math.round(performance.now() - started)} ms round trip` : ''} · ${sent.length} of ${message.renders.length} sent · ${(bytes / 1024).toFixed(1)} KB`);
+                for (const [id, selector, ms, size] of message.renders) {
+                    console.log(`${id.padEnd(6)} <${selector}> rendered ${ms} ms  ${size === null ? 'unchanged' : `sent ${(size / 1024).toFixed(1)} KB, patched ${patched.get(id)?.toFixed(1) ?? '?'} ms`}`);
+                }
+                console.groupEnd();
+                return;
+            }
+            if (message.t === 'inspection') {
+                console.log(`live.inspect('${message.id}')`, message.state ?? 'no such component');
+                return;
+            }
             // In dev: a saved template that does not compile, until it does
             if (message.t === 'problem') {
                 overlay.show(message.key, message.error);
@@ -66,7 +91,9 @@
             const el = document.querySelector(`[data-live-id="${CSS.escape(message.id)}"]`);
             if (!el) return;
             if (typeof message.html === 'string') {
+                const before = performance.now();
                 patchChildren(el, message.html);
+                patched.set(message.id, performance.now() - before);
                 overlay.show(message.id, null);
             }
             el.toggleAttribute('data-live-error', Boolean(message.error));
@@ -90,7 +117,12 @@
         const id = root.dataset.liveId;
         const method = el.getAttribute(attribute);
         order = order
-            .then(async () => send({ t: 'call', id, m: method, a: await args }))
+            .then(async () => {
+                const message = { t: 'call', id, m: method, a: await args };
+                // Only dev sends traces that answer them
+                if (boot) calls.push(performance.now());
+                send(message);
+            })
             .catch((error) => {
                 // A file the browser couldn't read: the component shows it like a failed call
                 root.setAttribute('data-live-error', '');

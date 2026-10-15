@@ -395,6 +395,13 @@ With `APP_ENV=development` (Waypoint's `Environment::isDev()`) and `tenma --watc
 - The same errors show in the editor at their line, under a Tenma with `Tenma::diagnostics()` and `tenma lsp`,
   until the component renders again or the template compiles.
 
+- `localStorage.liveDebug = '1'` (or `?live-debug` in the URL) logs every action in the browser's console:
+  what caused it, its time on the server and the round trip, and per component the render time, the size of
+  what was sent or that nothing changed, and the patch time. `live.inspect('c0')` prints what a component holds
+  on the server: inputs, state, children, timers and the tab's services (by class, not their content).
+- The console and the log warn when an action takes more than 50 ms, a message is larger than 100 KB, a tab
+  has more than 30 components, or timers send more than 10 renders a second.
+
 In production none of this happens: the browser only learns that a component failed (`data-live-error`).
 
 ## Limits of the proof of concept

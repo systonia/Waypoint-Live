@@ -45,6 +45,12 @@ final class Scope extends Container
         $this->scoped[$service::class] = $service;
     }
 
+    /** @return list<class-string> The tab's own services so far, for live.inspect() */
+    public function classes(): array
+    {
+        return array_keys($this->scoped);
+    }
+
     /** PropertyInjector asks this before get(): the app's services count, constructor arguments or not. */
     public function has(string $class): bool
     {

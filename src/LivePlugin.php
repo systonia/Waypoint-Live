@@ -240,16 +240,22 @@ final class LivePlugin extends PluginBase implements ViewHelper, ClientAsset, Re
         )));
     }
 
+    /** @internal In dev: a warning about how the app uses Live, logged once per worker. */
+    public function notice(string $message): void
+    {
+        if ($this->dev && !isset($this->warned[$message])) {
+            $this->warned[$message] = true;
+            $this->logger->warning("live: $message");
+        }
+    }
+
     /** In dev: logs what Problems finds in a rendered page, each once; the page as it is. */
     private function warn(string $page): string
     {
         if ($this->dev) {
             $classes = array_map(static fn (array $found) => $found[0], $this->components->sources());
             foreach (Problems::inPage($page, $classes) as $message) {
-                if (!isset($this->warned[$message])) {
-                    $this->warned[$message] = true;
-                    $this->logger->warning("live: in a page, $message");
-                }
+                $this->notice("in a page, $message");
             }
         }
         return $page;

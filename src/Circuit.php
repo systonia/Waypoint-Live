@@ -43,6 +43,21 @@ final class Circuit
     /** What the circuit is doing, for the developer's details of an error: `mount`, `call "add"`, `#[Every] tick` */
     private string $cause = '';
 
+    // ponytail: fixed thresholds of the dev warnings, options once someone needs others
+    private const SLOW_MS = 50.0;
+    private const BIG_BYTES = 100_000;
+    private const MANY_COMPONENTS = 30;
+    private const TIMER_MESSAGES_PER_SECOND = 10;
+
+    /** In dev: when the work behind the next trace started, hrtime in ns */
+    private int $started = 0;
+
+    /** @var list<array{string, string, float, ?int}> In dev: the renders since the last trace: id, selector, ms, bytes sent or null */
+    private array $renders = [];
+
+    /** @var list<float> In dev: when timers sent something in the last second */
+    private array $ticks = [];
+
     /**
      * @param Closure(string): void $send Writes one message to the browser.
      * @param Closure(Throwable): void $report Logs a failure.
@@ -99,6 +114,14 @@ final class Circuit
             'call' => 'call "' . (is_string($method) ? strtok($method, '~') : '') . '"',
             default => 'mount',
         };
+        // In dev the browser's console asks what a component holds: live.inspect('c0')
+        if (($msg['t'] ?? null) === 'inspect') {
+            if ($this->live->isDev()) {
+                ($this->send)(json_encode(['t' => 'inspection', 'id' => $id, 'state' => $this->inspect($id)], JSON_THROW_ON_ERROR | JSON_INVALID_UTF8_SUBSTITUTE));
+            }
+            return;
+        }
+        $this->started = hrtime(true);
         try {
             match ($msg['t'] ?? null) {
                 'mount' => $this->mount($id, $msg['c'] ?? null, $msg['p'] ?? []),
@@ -108,7 +131,84 @@ final class Circuit
         } catch (Throwable $e) {
             $this->failed($id, $e, $this->nodes[$id]->selector ?? (is_string($msg['c'] ?? null) ? $msg['c'] : null));
         }
+        $this->trace();
         $this->navigate();
+    }
+
+    /**
+     * In dev: what the last action, timer or broadcast cost, for the browser's console (`localStorage.liveDebug =
+     * '1'`), with warnings where it points at a problem.
+     */
+    private function trace(): void
+    {
+        $renders = $this->renders;
+        $this->renders = [];
+        if (!$this->live->isDev()) {
+            return;
+        }
+        $ms = round((hrtime(true) - $this->started) / 1e6, 2);
+        $warnings = [];
+        if ($ms > self::SLOW_MS && $renders !== []) {
+            $warnings[] = "$this->cause took $ms ms and rendered " . count($renders) . ' components: the whole tab renders on every change';
+        }
+        foreach ($renders as [, $selector, , $bytes]) {
+            if ($bytes > self::BIG_BYTES) {
+                $warnings[] = "<$selector> sent " . round($bytes / 1024) . ' KB in one message: a list without paging?';
+            }
+        }
+        if (count($this->nodes) > self::MANY_COMPONENTS) {
+            $warnings[] = count($this->nodes) . ' components in this tab, at most ' . self::MAX_COMPONENTS . ' top-level ones are allowed';
+        }
+        if (str_starts_with($this->cause, '#[Every]') && array_filter($renders, static fn (array $r) => $r[3] !== null) !== []) {
+            $now = microtime(true);
+            $this->ticks = [...array_filter($this->ticks, static fn (float $at) => $at > $now - 1), $now];
+            if (count($this->ticks) > self::TIMER_MESSAGES_PER_SECOND) {
+                $warnings[] = 'timers sent ' . count($this->ticks) . ' renders in one second';
+            }
+        }
+        foreach ($warnings as $warning) {
+            $this->live->notice($warning);
+        }
+        ($this->send)(json_encode(['t' => 'trace', 'cause' => $this->cause, 'ms' => $ms, 'renders' => $renders, 'warnings' => $warnings], JSON_THROW_ON_ERROR));
+    }
+
+    /**
+     * In dev: a component's inputs, its own state, its children, timers and the tab's services, for live.inspect().
+     * Objects show as their class: the browser gets no service's content.
+     *
+     * @return array<string, mixed>|null
+     */
+    private function inspect(string $id): ?array
+    {
+        $node = $this->nodes[$id] ?? null;
+        if ($node === null) {
+            return null;
+        }
+        $state = [];
+        foreach ((new ReflectionObject($node->component))->getProperties() as $property) {
+            if (!$property->isStatic()) {
+                $state[$property->getName()] = $property->isInitialized($node->component) ? self::shown($property->getValue($node->component)) : '(not set)';
+            }
+        }
+        return [
+            'selector' => $node->selector,
+            'class' => $node->component::class,
+            'inputs' => array_map(self::shown(...), $node->inputs),
+            'state' => $state,
+            'children' => array_map(static fn (Node $child) => "$child->id <$child->selector>", array_values($node->children)),
+            'timers' => count($node->timers),
+            'services' => $this->services->classes(),
+        ];
+    }
+
+    private static function shown(mixed $value, int $depth = 0): mixed
+    {
+        return match (true) {
+            is_object($value) => '<' . $value::class . '>',
+            is_array($value) => $depth > 3 ? '[…]' : array_map(static fn (mixed $item) => self::shown($item, $depth + 1), array_slice($value, 0, 50, true)),
+            is_resource($value) => '<resource>',
+            default => $value,
+        };
     }
 
     /** An action asked for another page: the browser goes there. */
@@ -330,12 +430,14 @@ final class Circuit
             foreach ($method->getAttributes(Every::class) as $attribute) {
                 $node->timers[] = ($this->every)($attribute->newInstance()->seconds, function () use ($node, $method): void {
                     $this->cause = '#[Every] ' . $method->getName();
+                    $this->started = hrtime(true);
                     try {
                         $method->invoke($node->component);
                         $this->changed();
                     } catch (Throwable $e) {
                         ($this->report)($e);
                     }
+                    $this->trace();
                     $this->navigate();
                 });
             }
@@ -356,6 +458,10 @@ final class Circuit
     public function changed(bool $onlyIfChanged = true, ?string $cause = null): void
     {
         $this->cause = $cause ?? $this->cause;
+        // From outside an action or a timer (a broadcast, a reconnect): a trace of its own
+        if ($cause !== null) {
+            $this->started = hrtime(true);
+        }
         foreach ($this->nodes as $node) {
             if ($node->root !== null) {
                 continue;
@@ -367,6 +473,9 @@ final class Circuit
                 $this->failed($node->id, $e, $node->selector);
             }
         }
+        if ($cause !== null) {
+            $this->trace();
+        }
     }
 
     private function render(Node $node, bool $onlyIfChanged = false): void
@@ -374,12 +483,16 @@ final class Circuit
         if (!isset($this->nodes[$node->id])) {
             return;
         }
+        $started = hrtime(true);
         $html = $this->html($node);
         $this->live->failed($this->key($node->id), null);
+        $message = null;
         if (!$onlyIfChanged || $html !== $node->sent) {
             $node->sent = $html;
-            ($this->send)(json_encode(['id' => $node->id, 'html' => $html], JSON_THROW_ON_ERROR));
+            $message = json_encode(['id' => $node->id, 'html' => $html], JSON_THROW_ON_ERROR);
+            ($this->send)($message);
         }
+        $this->renders[] = [$node->id, $node->selector, round((hrtime(true) - $started) / 1e6, 2), $message === null ? null : strlen($message)];
     }
 
     /** The node's template, with its children's tags rendered; children no longer placed are removed. */

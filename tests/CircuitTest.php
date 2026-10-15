@@ -256,7 +256,8 @@ final class CircuitTest extends TestCase
             $circuit = $this->circuit(live: $live);
             $circuit->handle($this->message(['t' => 'mount', 'id' => 'c0', 'c' => 'test-fragile', 'p' => []]));
             $circuit->handle($this->message(['t' => 'call', 'id' => 'c0', 'm' => 'toggle', 'a' => []]));
-            $error = $this->sent[1]['error'];
+            // In dev a trace follows every action, for the console
+            $error = array_values(array_filter($this->sent, static fn (array $m) => ($m['t'] ?? null) !== 'trace'))[1]['error'];
             if (!$dev) {
                 $this->assertTrue($error);
                 continue;
@@ -271,6 +272,28 @@ final class CircuitTest extends TestCase
             $this->assertSame([[$error['file'], 2, '<test-fragile> call "toggle": RuntimeException: broken']], array_map(static fn (array $f) => array_values($f), array_values($failures->getValue($live))));
             $circuit->handle($this->message(['t' => 'call', 'id' => 'c0', 'm' => 'toggle', 'a' => []]));
             $this->assertSame([], $failures->getValue($live));
+        }
+    }
+
+    public function testInDevEveryActionSendsATraceAndTheConsoleCanInspectAComponent(): void
+    {
+        foreach ([false, true] as $dev) {
+            $this->sent = [];
+            $circuit = $this->circuit(live: $this->plugin($dev));
+            $circuit->handle($this->message(['t' => 'mount', 'id' => 'c0', 'c' => 'test-list', 'p' => []]));
+            $circuit->handle($this->message(['t' => 'call', 'id' => 'c0', 'm' => 'drop', 'a' => []]));
+            $circuit->handle($this->message(['t' => 'inspect', 'id' => 'c0']));
+            $traces = array_values(array_filter($this->sent, static fn (array $m) => ($m['t'] ?? null) === 'trace'));
+            $inspection = array_values(array_filter($this->sent, static fn (array $m) => ($m['t'] ?? null) === 'inspection'));
+            if (!$dev) {
+                $this->assertSame([[], []], [$traces, $inspection]);
+                continue;
+            }
+            $this->assertSame(['mount', 'call "drop"'], array_column($traces, 'cause'));
+            [$id, $selector, $ms, $bytes] = $traces[1]['renders'][0];
+            $this->assertSame(['c0', 'test-list', true, true], [$id, $selector, is_numeric($ms), $bytes > 0]);
+            $state = $inspection[0]['state'];
+            $this->assertSame(['test-list', ['b'], ['c0.1 <test-item>'], 0], [$state['selector'], $state['state']['items'], $state['children'], $state['timers']]);
         }
     }
 
