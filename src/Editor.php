@@ -2,14 +2,9 @@
 
 namespace Waypoint\Live;
 
-use FilesystemIterator;
-use RecursiveDirectoryIterator;
-use RecursiveIteratorIterator;
 use ReflectionClass;
 use ReflectionMethod;
-use SplFileInfo;
 use Tenma\Lsp\{Provider, Tokens};
-use Throwable;
 
 /**
  * Live in the editor, through `tenma lsp` (composer.json names it under extra.tenma.lsp): `$this` in a
@@ -255,78 +250,6 @@ final class Editor implements Provider, Tokens
     /** @return array<string, array{class-string, string}> */
     private function components(): array
     {
-        if ($this->components !== null) {
-            return $this->components;
-        }
-        $components = new Components();
-        foreach ($this->classes() as $class) {
-            try {
-                $components->add($class);
-            } catch (Throwable) {
-                // A component that cannot be added (no template, a taken selector) gets no help; the app reports it at boot
-            }
-        }
-        return $this->components = $components->sources();
-    }
-
-    /** @return list<class-string> Classes with #[Component] in the project's autoloaded directories */
-    private function classes(): array
-    {
-        $composer = json_decode((string) @file_get_contents("$this->root/composer.json"), true);
-        $directories = [];
-        foreach (['autoload', 'autoload-dev'] as $section) {
-            $autoload = is_array($composer) && is_array($composer[$section] ?? null) ? $composer[$section] : [];
-            foreach (['psr-4', 'classmap'] as $kind) {
-                // psr-4 maps a prefix to one directory or several, classmap lists them
-                foreach ((array) ($autoload[$kind] ?? []) as $paths) {
-                    foreach ((array) $paths as $path) {
-                        if (is_string($path)) {
-                            $directories[] = "$this->root/" . trim($path, '/');
-                        }
-                    }
-                }
-            }
-        }
-        $classes = [];
-        foreach (array_unique($directories) as $directory) {
-            if (!is_dir($directory)) {
-                continue;
-            }
-            foreach (new RecursiveIteratorIterator(new RecursiveDirectoryIterator($directory, FilesystemIterator::SKIP_DOTS)) as $file) {
-                $path = $file instanceof SplFileInfo ? $file->getPathname() : '';
-                if (!str_ends_with($path, '.php') || str_contains($path, '/vendor/')) {
-                    continue;
-                }
-                $source = (string) file_get_contents($path);
-                $class = str_contains($source, 'Component') ? self::declaredClass($source) : null;
-                if ($class !== null && class_exists($class) && (new ReflectionClass($class))->getAttributes(Component::class) !== []) {
-                    $classes[] = $class;
-                }
-            }
-        }
-        return $classes;
-    }
-
-    /** The first class a PHP file declares, with its namespace. */
-    private static function declaredClass(string $source): ?string
-    {
-        $namespace = '';
-        $tokens = token_get_all($source);
-        foreach ($tokens as $i => $token) {
-            if (!is_array($token)) {
-                continue;
-            }
-            if ($token[0] === T_NAMESPACE) {
-                $name = $tokens[$i + 2] ?? null;
-                $namespace = is_array($name) ? $name[1] . '\\' : '';
-            }
-            // `Foo::class` is no declaration
-            $previous = $tokens[$i - 1] ?? null;
-            if ($token[0] === T_CLASS && !(is_array($previous) && $previous[0] === T_DOUBLE_COLON)) {
-                $name = $tokens[$i + 2] ?? null;
-                return is_array($name) && $name[0] === T_STRING ? $namespace . $name[1] : null;
-            }
-        }
-        return null;
+        return $this->components ??= Components::scan($this->root)->sources();
     }
 }

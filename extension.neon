@@ -1,0 +1,8 @@
+# Private members that only a component's template or a timer uses count as used. Included automatically with
+# phpstan/extension-installer, otherwise add vendor/systonia/waypoint-live/extension.neon to "includes".
+services:
+    -
+        class: Waypoint\Live\PHPStan\TemplateMembers
+        tags:
+            - phpstan.properties.readWriteExtension
+            - phpstan.methods.alwaysUsedMethodExtension

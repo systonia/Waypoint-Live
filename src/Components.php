@@ -3,9 +3,13 @@
 namespace Waypoint\Live;
 
 use Closure;
+use FilesystemIterator;
 use InvalidArgumentException;
 use LogicException;
+use RecursiveDirectoryIterator;
+use RecursiveIteratorIterator;
 use ReflectionClass;
+use SplFileInfo;
 use Throwable;
 
 /**
@@ -138,5 +142,84 @@ final class Components
             }
         }
         return $changed;
+    }
+
+    /**
+     * @internal Every class with #[Component] below a project's autoload and autoload-dev directories (PSR-4 and
+     * classmap), not only those an app lists: for the editor and live-check, which run no app. A component that
+     * cannot be added (no template, a taken selector) is left out; the app reports it at boot.
+     */
+    public static function scan(string $root): self
+    {
+        $components = new self();
+        foreach (self::classes($root) as $class) {
+            try {
+                $components->add($class);
+            } catch (Throwable) {
+            }
+        }
+        return $components;
+    }
+
+    /** @return list<class-string> Classes with #[Component] in the project's autoloaded directories */
+    private static function classes(string $root): array
+    {
+        $composer = json_decode((string) @file_get_contents("$root/composer.json"), true);
+        $directories = [];
+        foreach (['autoload', 'autoload-dev'] as $section) {
+            $autoload = is_array($composer) && is_array($composer[$section] ?? null) ? $composer[$section] : [];
+            foreach (['psr-4', 'classmap'] as $kind) {
+                // psr-4 maps a prefix to one directory or several, classmap lists them
+                foreach ((array) ($autoload[$kind] ?? []) as $paths) {
+                    foreach ((array) $paths as $path) {
+                        if (is_string($path)) {
+                            $directories[] = "$root/" . trim($path, '/');
+                        }
+                    }
+                }
+            }
+        }
+        $classes = [];
+        foreach (array_unique($directories) as $directory) {
+            if (!is_dir($directory)) {
+                continue;
+            }
+            foreach (new RecursiveIteratorIterator(new RecursiveDirectoryIterator($directory, FilesystemIterator::SKIP_DOTS)) as $file) {
+                $path = $file instanceof SplFileInfo ? $file->getPathname() : '';
+                if (!str_ends_with($path, '.php') || str_contains($path, '/vendor/')) {
+                    continue;
+                }
+                $source = (string) file_get_contents($path);
+                // Loaded only with the attribute in front of a declaration: another class may need what only an app has
+                $class = preg_match('/^\s*#\[Component\b/m', $source) === 1 ? self::declaredClass($source) : null;
+                if ($class !== null && class_exists($class) && (new ReflectionClass($class))->getAttributes(Component::class) !== []) {
+                    $classes[] = $class;
+                }
+            }
+        }
+        return $classes;
+    }
+
+    /** The first class a PHP file declares, with its namespace. */
+    private static function declaredClass(string $source): ?string
+    {
+        $namespace = '';
+        $tokens = token_get_all($source);
+        foreach ($tokens as $i => $token) {
+            if (!is_array($token)) {
+                continue;
+            }
+            if ($token[0] === T_NAMESPACE) {
+                $name = $tokens[$i + 2] ?? null;
+                $namespace = is_array($name) ? $name[1] . '\\' : '';
+            }
+            // `Foo::class` is no declaration
+            $previous = $tokens[$i - 1] ?? null;
+            if ($token[0] === T_CLASS && !(is_array($previous) && $previous[0] === T_DOUBLE_COLON)) {
+                $name = $tokens[$i + 2] ?? null;
+                return is_array($name) && $name[0] === T_STRING ? $namespace . $name[1] : null;
+            }
+        }
+        return null;
     }
 }

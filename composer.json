@@ -17,6 +17,9 @@
             "Waypoint\\Live\\": "src/"
         }
     },
+    "bin": [
+        "bin/live-check"
+    ],
     "autoload-dev": {
         "psr-4": {
             "Waypoint\\Live\\Tests\\": "tests/"
@@ -25,6 +28,11 @@
     "extra": {
         "tenma": {
             "lsp": "Waypoint\\Live\\Editor"
+        },
+        "phpstan": {
+            "includes": [
+                "extension.neon"
+            ]
         }
     },
     "scripts": {

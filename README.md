@@ -371,6 +371,34 @@ Tab::page($app, 'app-counter', ['count' => 1]);    // the HTML before any connec
 error that the browser would only see as `data-live-error` fails the test with its own stack. Two tabs of one
 app share its services: a `Broadcast` in one renders the other.
 
+## Static analysis
+
+`vendor/bin/live-check` checks the project's components without running the app: what the app checks in
+development (above), and PHPStan on every template, read as the PHP it becomes with `$this` as its component.
+An undefined property, a method with the wrong arguments or a typo in the member of a loop variable is reported
+at the template's line:
+
+```
+$ vendor/bin/live-check
+src/Products.Template.php:4: error: Access to an undefined property Demo\Product::$nmae.
+live-check: 1 errors, 0 warnings
+```
+
+It needs `phpstan/phpstan` as a dev dependency and uses the project's `phpstan.neon` (level, extensions), or
+level 6 without one. The generated files go to `var/live-check/` (add `var/` to `.gitignore`); the exit code
+fails a CI step. In a `tenma.dev.php` hook, PHPStan's findings reach the editor as you save:
+
+```php
+new Tenma\Hook(
+    name: 'live-check',
+    inputs: ['src/**'],
+    run: fn () => Waypoint\Live\Check::publish(__DIR__),
+),
+```
+
+The package also brings a PHPStan extension (included by `phpstan/extension-installer`): a private property or
+method of a `#[Component]` class that only its template uses no longer counts as unused.
+
 ## Development
 
 With `APP_ENV=development` (Waypoint's `Environment::isDev()`) and `tenma --watch`:

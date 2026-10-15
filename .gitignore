@@ -12,3 +12,6 @@ phpstan-baseline.neon.tmp
 .DS_Store
 .idea/
 .vscode/
+
+# live-check
+var/
