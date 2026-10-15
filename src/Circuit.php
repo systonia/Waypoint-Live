@@ -307,6 +307,11 @@ final class Circuit
     private function failed(string $id, Throwable $e, ?string $selector): void
     {
         ($this->report)($e);
+        // Its next good render goes to the browser even if its HTML is the same as before: that clears the error
+        $root = $this->nodes[explode('.', $id)[0]] ?? null;
+        if ($root !== null) {
+            $root->sent = null;
+        }
         $error = $this->live->isDev() ? Failure::describe($e, $this->cause, $selector) : true;
         $this->live->failed($this->key($id), $error === true ? null : $error);
         ($this->send)(json_encode(['id' => $id, 'error' => $error], JSON_THROW_ON_ERROR | JSON_INVALID_UTF8_SUBSTITUTE));
@@ -551,8 +556,6 @@ final class Circuit
             try {
                 $this->render($node, $onlyIfChanged);
             } catch (Throwable $e) {
-                // Its next good render goes to the browser even if its HTML is the same as before: that clears the error
-                $node->sent = null;
                 $this->failed($node->id, $e, $node->selector);
             }
         }

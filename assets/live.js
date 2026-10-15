@@ -101,6 +101,8 @@
                 const before = performance.now();
                 patchChildren(el, message.html);
                 patched.set(message.id, performance.now() - before);
+                // Its children's errors too: only top-level components get HTML of their own
+                overlay.clear(`${message.id}.`);
                 // The whole top-level component with its children, by their paths (c0/app-row=Berlin)
                 if (message.state) states.set(message.id, message.state);
                 overlay.show(message.id, null);
@@ -318,6 +320,10 @@
             </style>`;
         };
         return {
+            // Every entry whose key starts with prefix
+            clear(prefix) {
+                for (const key of [...entries.keys()]) if (key.startsWith(prefix)) this.show(key, null);
+            },
             show(key, error) {
                 const entry = entries.get(key);
                 if (!error) {

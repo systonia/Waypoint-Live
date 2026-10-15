@@ -106,6 +106,12 @@ const $ = (id) => document.getElementById(id);
   server({ id: 'c1', html: $('fa').closest('[data-live]').innerHTML });
   server({ t: 'problem', key: '/app/src/B.Template.php', error: null });
   check('a render and a fixed template close them', overlay().querySelectorAll('section').length === 0);
+  // A child's failed call: its parent's next HTML closes the entry, children have no HTML of their own
+  document.querySelector('[data-live-id="c1"]').insertAdjacentHTML('beforeend', '<i data-live data-live-id="c1.0"></i>');
+  server({ id: 'c1.0', error });
+  check('a child error opens the overlay', overlay().querySelectorAll('section').length === 1);
+  server({ id: 'c1', html: $('fa').closest('[data-live]').innerHTML });
+  check('a parent render closes a child error', overlay().querySelectorAll('section').length === 0);
   // In dev the console can ask the server what a component holds, and a trace answers every action
   sent.length = 0;
   window.live.inspect('c1');

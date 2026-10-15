@@ -108,10 +108,10 @@ final class CircuitTest extends TestCase
         $circuit->handle($this->message(['t' => 'mount', 'id' => 'c3', 'c' => 'test-counter', 'p' => ['label' => 'x']]));
         $circuit->handle($this->message(['t' => 'mount', 'id' => 'c0', 'c' => 'test-counter', 'p' => []]));
 
-        $this->assertCount(8, $this->sent);
+        // Errors only; after a failed call the unchanged component comes again, which clears the error in the browser
+        $this->assertCount(8, array_filter($this->sent, static fn (array $reply) => ($reply['error'] ?? false) === true));
         foreach ($this->sent as $reply) {
-            $this->assertTrue($reply['error'] ?? false);
-            $this->assertArrayNotHasKey('html', $reply);
+            $this->assertTrue(($reply['error'] ?? false) || $reply['html'] === self::html(3));
         }
         $this->assertCount(8, $this->reported);
     }
@@ -332,6 +332,17 @@ final class CircuitTest extends TestCase
         Circuit::page($this->plugin(), 'test-counter', ['count' => new \stdClass()]);
     }
 
+    public function testAfterAFailedCallTheNextRenderGoesOutEvenIfItIsTheSame(): void
+    {
+        $circuit = $this->circuit();
+        $circuit->handle($this->message(['t' => 'mount', 'id' => 'c0', 'c' => 'test-counter', 'p' => ['count' => 3]]));
+        $circuit->handle($this->message(['t' => 'call', 'id' => 'c0', 'm' => 'add', 'a' => ['not a number']]));
+        $this->sent = [];
+        // add(0) changes nothing, but the browser still marks the component as failed: the HTML clears it
+        $circuit->handle($this->message(['t' => 'call', 'id' => 'c0', 'm' => 'add', 'a' => [0]]));
+        $this->assertSame([['id' => 'c0', 'html' => self::html(3)]], $this->sent);
+    }
+
     public function testThePageRendersChildrenWithRelativeIds(): void
     {
         $html = Circuit::page($this->plugin(), 'test-list', []);
@@ -477,7 +488,7 @@ final class CircuitTest extends TestCase
         foreach (['//evil.test', "/\t/evil.test", "/\n/evil.test", "/\r\n/evil.test", '/\\evil.test', 'https://evil.test', 'javascript:alert(1)'] as $url) {
             $this->sent = [];
             $circuit->handle($this->message(['t' => 'call', 'id' => 'c0', 'm' => 'leave', 'a' => [$url]]));
-            $this->assertSame([['id' => 'c0', 'error' => true]], $this->sent, json_encode($url) ?: '');
+            $this->assertSame([['id' => 'c0', 'error' => true]], array_values(array_filter($this->sent, static fn (array $m) => isset($m['error']))), json_encode($url) ?: '');
         }
 
         // A reconnect brings the new connection's request
