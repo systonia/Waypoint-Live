@@ -1,5 +1,5 @@
 <?php
-// Run with: tenma index.php (live components need Tenma), then open http://localhost:8090
+// Run with: tenma index.php (live components need Tenma), then open http://localhost:8091
 
 require __DIR__ . '/vendor/autoload.php';
 
@@ -19,4 +19,4 @@ $app->configure(function (RendererOptions $opts) {
 $app->attach([HomeController::class]);
 
 Tenma::serve(8090, $app);
-echo "Live components: http://localhost:8090\n";
+echo "Live components: http://localhost:8091\n";
