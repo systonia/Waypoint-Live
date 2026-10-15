@@ -35,6 +35,14 @@ final class DirectivesTest extends TestCase
         $this->assertStringContainsString('$b', explode("\n", $php)[5]);
     }
 
+    public function testAnEchoAtALineEndInsideAChildsAttributeKeepsItsNewline(): void
+    {
+        $php = Template::compile("<app-row name=\"{{ \$a }}\n{{ \$b }}\"></app-row>", ['app-row']);
+        // It parses, and the value is $a, a newline and $b
+        eval('return; ' . $php);
+        $this->assertMatchesRegularExpression("/'name' => '' \\. \\(string\\) \\(\\s*\\\$a\\s*\\) \\. '\n' \\. \\(string\\) \\(\\s*\\\$b\\s*\\)/", $php);
+    }
+
     public function testTextAndPhpStayAsTheyAre(): void
     {
         foreach ([

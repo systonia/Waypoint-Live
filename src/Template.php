@@ -180,6 +180,9 @@ final class Template
         $parts = (array) preg_split('/<\?=(.*?);?\s*\?>/s', $value, -1, PREG_SPLIT_DELIM_CAPTURE);
         $code = [];
         foreach ($parts as $i => $part) {
+            // A {{ }} at the end of a line echoes the newline PHP would swallow (Directives); inside a value the
+            // newline stays in the text after it, so the echo of it goes
+            $part = $i % 2 === 1 ? (string) preg_replace('/,\s*"\\\\n"\s*$/', '', (string) $part) : $part;
             $code[] = $i % 2 === 1 ? '(string) (' . $part . ')' : var_export(html_entity_decode((string) $part, ENT_QUOTES | ENT_HTML5), true);
         }
         return implode(' . ', $code);
