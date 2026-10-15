@@ -81,13 +81,16 @@ final class Check
         // Outside the PHP CLI (under Tenma PHP_BINARY is empty) the php on the PATH runs PHPStan
         $command = [PHP_SAPI === 'cli' ? PHP_BINARY : 'php', $binary, 'analyse', '--no-progress', '--error-format=json', '--memory-limit=1G'];
         $command = [...$command, ...(is_file("$root/phpstan.neon") || is_file("$root/phpstan.neon.dist") ? [] : ['--level=6']), ...array_keys($templates)];
-        $process = proc_open($command, [1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes, $root);
+        // stderr into a file: read after stdout through a pipe, a full pipe would leave both processes waiting
+        $log = (string) tempnam(sys_get_temp_dir(), 'live-check');
+        $process = proc_open($command, [1 => ['pipe', 'w'], 2 => ['file', $log, 'w']], $pipes, $root);
         if ($process === false) {
             throw new RuntimeException('PHPStan does not start');
         }
         $output = (string) stream_get_contents($pipes[1]);
-        $errors = (string) stream_get_contents($pipes[2]);
         proc_close($process);
+        $errors = (string) @file_get_contents($log);
+        @unlink($log);
         $result = json_decode($output, true);
         if (!is_array($result) || !is_array($result['files'] ?? null)) {
             throw new RuntimeException('PHPStan failed: ' . trim($errors . "\n" . $output));
