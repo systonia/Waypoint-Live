@@ -517,11 +517,13 @@ final class Circuit
                 $node->timers[] = ($this->every)($attribute->newInstance()->seconds, function () use ($node, $method): void {
                     $this->cause = '#[Every] ' . $method->getName();
                     $this->started = hrtime(true);
+                    // As an action: a failure shows on the component, what changed before it still renders
                     try {
                         $method->invoke($node->component);
-                        $this->changed();
                     } catch (Throwable $e) {
-                        ($this->report)($e);
+                        $this->failed($node->id, $e, $node->selector);
+                    } finally {
+                        $this->changed();
                     }
                     $this->trace();
                     $this->navigate();

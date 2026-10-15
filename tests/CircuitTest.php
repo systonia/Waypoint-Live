@@ -10,7 +10,7 @@ use Waypoint\Environment;
 use Waypoint\Logger;
 use Waypoint\Http\{Request, Response};
 use Waypoint\Live\{Circuit, Components, LiveOptions, LivePlugin};
-use Waypoint\Live\Tests\Fixtures\{BasketBadge, BasketButton, Chat, Counter, Fragile, Item, ItemList, Label, Bouncer, Room, Shop, Uploader, Visitor};
+use Waypoint\Live\Tests\Fixtures\{BasketBadge, BasketButton, Chat, Counter, Fragile, Item, ItemList, Label, Bouncer, Room, Shop, Ticker, Uploader, Visitor};
 
 final class CircuitTest extends TestCase
 {
@@ -46,7 +46,7 @@ final class CircuitTest extends TestCase
 
     private function plugin(bool $dev = false): LivePlugin
     {
-        $live = new LivePlugin([Counter::class, ItemList::class, Item::class, BasketButton::class, BasketBadge::class, Fragile::class, Uploader::class, Visitor::class, Bouncer::class, Chat::class, Shop::class]);
+        $live = new LivePlugin([Counter::class, ItemList::class, Item::class, BasketButton::class, BasketBadge::class, Fragile::class, Uploader::class, Visitor::class, Bouncer::class, Chat::class, Shop::class, Ticker::class]);
         $container = new Container();
         $container->set(new Label('fine'));
         $container->set(new Room());
@@ -140,6 +140,18 @@ final class CircuitTest extends TestCase
 
         $circuit->close();
         $this->assertTrue($this->timers[0][2]);
+    }
+
+    public function testAFailingTimerShowsOnTheComponentAndWhatItChangedRenders(): void
+    {
+        $circuit = $this->circuit();
+        $circuit->handle($this->message(['t' => 'mount', 'id' => 'c0', 'c' => 'app-ticker', 'p' => []]));
+        [, $tick] = $this->timers[0];
+        $tick();
+        $this->sent = [];
+        $tick();
+        $this->assertSame([['id' => 'c0', 'error' => true], ['id' => 'c0', 'html' => "<b>2</b>\n"]], $this->sent);
+        $this->assertSame('second tick', $this->reported[0]->getMessage());
     }
 
     public function testChildrenGetIdsKeepTheirStateAndCallBackIntoTheParent(): void
