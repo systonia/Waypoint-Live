@@ -8,7 +8,7 @@ use Throwable;
 use Waypoint\Container;
 use Waypoint\Http\{Request, Response};
 use Waypoint\Live\{Circuit, Components, LivePlugin};
-use Waypoint\Live\Tests\Fixtures\{BasketBadge, BasketButton, Chat, Counter, Fragile, Item, ItemList, Label, Bouncer, Room, Uploader, Visitor};
+use Waypoint\Live\Tests\Fixtures\{BasketBadge, BasketButton, Chat, Counter, Fragile, Item, ItemList, Label, Bouncer, Room, Shop, Uploader, Visitor};
 
 final class CircuitTest extends TestCase
 {
@@ -44,7 +44,7 @@ final class CircuitTest extends TestCase
 
     private function plugin(): LivePlugin
     {
-        $live = new LivePlugin([Counter::class, ItemList::class, Item::class, BasketButton::class, BasketBadge::class, Fragile::class, Uploader::class, Visitor::class, Bouncer::class, Chat::class]);
+        $live = new LivePlugin([Counter::class, ItemList::class, Item::class, BasketButton::class, BasketBadge::class, Fragile::class, Uploader::class, Visitor::class, Bouncer::class, Chat::class, Shop::class]);
         $container = new Container();
         $container->set(new Label('fine'));
         $container->set(new Room());
@@ -155,6 +155,42 @@ final class CircuitTest extends TestCase
         $circuit->handle($this->message(['t' => 'call', 'id' => 'c0', 'm' => 'pick', 'a' => ['x']]));
         $circuit->handle($this->message(['t' => 'mount', 'id' => 'c0.5', 'c' => 'test-item', 'p' => []]));
         $this->assertSame([['id' => 'c0.0', 'error' => true], ['id' => 'c0', 'error' => true], ['id' => 'c0.5', 'error' => true]], $this->sent);
+    }
+
+    public function testActionsWithArgumentsGetTheirObjectsAndKeepTheirIdsWhenTheListIsReordered(): void
+    {
+        $circuit = $this->circuit();
+        $circuit->handle($this->message(['t' => 'mount', 'id' => 'c0', 'c' => 'test-shop', 'p' => []]));
+        $ids = static function (string $html): array {
+            preg_match_all('/data-on-(?:click|input)="(\w+~\w+)">(\w*)/', $html, $m);
+            return $m[1];
+        };
+        // Per product: remove, rename. The browser sees IDs, not the arguments
+        [$removeTea, $renameTea, $removeCoffee] = $ids($this->sent[0]['html']);
+        $this->assertStringStartsWith('remove~', $removeTea);
+        $this->assertStringStartsWith('rename~', $renameTea);
+
+        // What the event brings comes after the bound object
+        $circuit->handle($this->message(['t' => 'call', 'id' => 'c0', 'm' => $renameTea, 'a' => ['cocoa']]));
+        $this->assertStringContainsString('>cocoa</button>', $this->sent[1]['html']);
+
+        // Reordered: the same object keeps its ID, a click from before the reorder still hits coffee
+        $circuit->handle($this->message(['t' => 'call', 'id' => 'c0', 'm' => 'reverse', 'a' => []]));
+        $this->assertSame([$removeCoffee, $removeTea], array_values(array_filter($ids($this->sent[2]['html']), static fn (string $id) => str_starts_with($id, 'remove~'))));
+        $circuit->handle($this->message(['t' => 'call', 'id' => 'c0', 'm' => $removeCoffee, 'a' => []]));
+        $this->assertStringNotContainsString('coffee', $this->sent[3]['html']);
+
+        // Two renders later coffee's ID is gone: refused without a call, an error or a render
+        $circuit->handle($this->message(['t' => 'call', 'id' => 'c0', 'm' => 'reverse', 'a' => []]));
+        $this->sent = [];
+        $circuit->handle($this->message(['t' => 'call', 'id' => 'c0', 'm' => $removeCoffee, 'a' => []]));
+        $circuit->handle($this->message(['t' => 'call', 'id' => 'c0', 'm' => 'remove~0', 'a' => []]));
+        $this->assertSame([], $this->sent);
+
+        // A method the template only calls with arguments is not reachable by its name
+        $circuit->handle($this->message(['t' => 'call', 'id' => 'c0', 'm' => 'remove', 'a' => []]));
+        $this->assertSame([['id' => 'c0', 'error' => true]], $this->sent);
+        $this->assertCount(1, $this->reported);
     }
 
     public function testThePageRendersChildrenWithRelativeIds(): void

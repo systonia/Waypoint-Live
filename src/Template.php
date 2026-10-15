@@ -4,6 +4,7 @@ namespace Waypoint\Live;
 
 use Closure;
 use InvalidArgumentException;
+use LogicException;
 use Stringable;
 use TypeError;
 
@@ -12,6 +13,7 @@ use TypeError;
  * `<?= $this->count ?>` is HTML-escaped, `<?php echo $html ?>` stays raw; control flow works as in any view.
  * `<app-row name="<?= $city ?>" key="<?= $city ?>"></app-row>` places a child component: a value that is a
  * single `<?= expr ?>` passes the value itself (an int, an object, a closure), anything else passes a string.
+ * `data-on-click="remove($item)"` binds arguments on the server: the browser only gets an ID for the call.
  * Directives in the Blade style (`{{ }}`, `@foreach`, `@if`, see Directives) become such PHP first.
  * Compiled once when the plugin starts; the methods its `data-on-*` attributes name are the only ones the
  * browser can call.
@@ -52,18 +54,22 @@ final class Template
                 throw new InvalidArgumentException("line {$problem['line']}: {$problem['message']}");
             }
         }
-        return '?>' . self::escapeEchoes(self::children($directives->compile(), $selectors));
+        return '?>' . self::escapeEchoes(self::children(self::calls($directives->compile()), $selectors));
     }
 
-    /** @param Closure(string, array<string, mixed>): string $child Renders a child component's tag. */
-    public function render(object $component, Closure $child): string
+    /**
+     * @param Closure(string, array<string, mixed>): string $child Renders a child component's tag.
+     * @param (Closure(string, list<mixed>): string)|null $action Keeps a method and its arguments, returns the ID the browser calls it by.
+     */
+    public function render(object $component, Closure $child, ?Closure $action = null): string
     {
+        $action ??= static fn (string $method): never => throw new LogicException("data-on-*=\"$method(...)\" needs a circuit to render in");
         ob_start();
         try {
             // ponytail: eval on every render; a compiled file in a cache directory lets opcache keep it once renders get hot
-            (function (string $__code, Closure $__child): void {
+            (function (string $__code, Closure $__child, Closure $__action): void {
                 eval($__code);
-            })->call($component, $this->code, $child);
+            })->call($component, $this->code, $child, $action);
             return (string) ob_get_contents();
         } finally {
             ob_end_clean();
@@ -104,6 +110,19 @@ final class Template
             // PHP swallows a newline after a closing tag: echo it instead, so the output and the line numbers stay put
             return '<?php echo $__child(' . var_export($m[1], true) . ', [' . implode(', ', $inputs) . '])' . ($m[3] !== '' ? ', "\n"' : '') . '; ?>' . $m[3];
         }, $source);
+    }
+
+    /** `data-on-click="remove($item)"` becomes `data-on-click="<?= $__action('remove', [$item]) ?>"`, in the HTML only. */
+    private static function calls(string $source): string
+    {
+        $code = '';
+        foreach (token_get_all($source) as $token) {
+            $text = is_array($token) ? $token[1] : $token;
+            $code .= is_array($token) && $token[0] === T_INLINE_HTML
+                ? preg_replace('/\bdata-on-([a-z]+)="([A-Za-z_]\w*)\(([^"]*)\)"/', 'data-on-$1="<?= $__action(\'$2\', [$3]) ?>"', $text)
+                : $text;
+        }
+        return $code;
     }
 
     /** An attribute's value as PHP code: a lone `<?= expr ?>` is the value itself, anything else a string. */

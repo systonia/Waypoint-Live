@@ -14,7 +14,7 @@ use Waypoint\Http\{Request, UploadedFile};
  * One browser tab's components on the server, for as long as its WebSocket is open. Messages from the browser
  * (JSON): `{"t":"mount","id":"c0","c":"app-counter","p":{...}}` creates a top-level component with its inputs,
  * `{"t":"call","id":"c0.1","m":"increment","a":[...]}` calls a method its template wires up, on a top-level
- * component or a child. After a change every top-level component renders; the changed ones go back as `{"id","html"}`;
+ * component or a child; `"m":"remove~3f0c…"` one the template bound to arguments (`data-on-click="remove($item)"`). After a change every top-level component renders; the changed ones go back as `{"id","html"}`;
  * a failure as `{"id","error":true}` without details. The circuit keeps running either way.
  */
 final class Circuit
@@ -195,19 +195,30 @@ final class Circuit
     private function call(string $id, mixed $method, mixed $args): void
     {
         $node = $this->nodes[$id] ?? throw new InvalidArgumentException("No component '$id'");
-        // Only what the template wires up: a public method elsewhere in the class stays out of reach
-        if (!is_string($method) || !in_array($method, $node->template->actions, true) || !is_array($args) || !array_is_list($args)) {
-            throw new InvalidArgumentException('call needs a method the template names and a list of arguments');
+        if (!is_string($method) || !is_array($args) || !array_is_list($args)) {
+            throw new InvalidArgumentException('call needs a method and a list of arguments');
+        }
+        $files = 0;
+        foreach ($args as $i => $arg) {
+            $args[$i] = self::files($arg, $files);
+        }
+        $bound = $node->calls[$method] ?? $node->lastCalls[$method] ?? null;
+        if ($bound !== null) {
+            // A call a render bound: its arguments first, then what the event brings
+            [$method, $before] = $bound;
+            $args = [...$before, ...$args];
+        } elseif (str_contains($method, '~')) {
+            // Bound by a render that is gone: the browser has the newer one or gets it, the click was on what changed
+            return;
+        } elseif (!in_array($method, $node->template->actions, true)) {
+            // Only what the template wires up: a public method elsewhere in the class stays out of reach
+            throw new InvalidArgumentException("'$method' is no method the template names");
         }
         $reflection = new ReflectionMethod($node->component, $method);
         if (!$reflection->isPublic() || $reflection->isStatic()) {
             throw new InvalidArgumentException("'$method' is not a public method");
         }
         try {
-            $files = 0;
-            foreach ($args as $i => $arg) {
-                $args[$i] = self::files($arg, $files);
-            }
             $reflection->invokeArgs($node->component, $args);
         } finally {
             // A method that throws may have changed something before
@@ -325,6 +336,15 @@ final class Circuit
     {
         $positions = [];
         $placed = [];
+        $node->lastCalls = $node->calls;
+        $node->calls = [];
+        // The same method with the same values and objects gets the same ID in every render: a list that is
+        // reordered keeps its IDs, an item that is gone takes its ID along
+        $action = static function (string $method, array $args) use ($node): string {
+            $id = $method . '~' . hash('xxh3', self::identity($args));
+            $node->calls[$id] = [$method, array_values($args)];
+            return $id;
+        };
         $html = $node->template->render($node->component, function (string $selector, array $inputs) use ($node, &$positions, &$placed): string {
             $key = $inputs['key'] ?? null;
             unset($inputs['key']);
@@ -351,12 +371,28 @@ final class Circuit
             }
             $child->inputs = $inputs;
             return sprintf('<%1$s data-live data-live-id="%2$s">%3$s</%1$s>', $selector, htmlspecialchars($child->id, ENT_QUOTES), $this->html($child));
-        });
+        }, $action);
         foreach (array_diff_key($node->children, $placed) as $key => $gone) {
             $this->remove($gone);
             unset($node->children[$key]);
         }
         return $html;
+    }
+
+    /** Values by value, objects by identity: a bound object stays alive in the table, so its ID is not reused. */
+    private static function identity(mixed $value): string
+    {
+        if (is_object($value)) {
+            return 'o' . spl_object_id($value) . ';';
+        }
+        if (!is_array($value)) {
+            return serialize($value);
+        }
+        $identity = '[';
+        foreach ($value as $key => $item) {
+            $identity .= serialize($key) . self::identity($item);
+        }
+        return $identity . ']';
     }
 
     private function remove(Node $node): void

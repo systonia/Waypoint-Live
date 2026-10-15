@@ -55,7 +55,9 @@ Composer `classmap` (see the demo). The template path is relative to the compone
 5. `data-on-click="method"` (with an optional `data-arg`), `data-on-input` (the field's value, debounced),
    `data-on-change` (value, `checked` for a checkbox, the file for a file input) and `data-on-submit` (the form
    as an object, files included) call the
-   component's method. After each call the template renders again, and the client patches the new HTML in
+   component's method. `data-on-click="remove($item)"` passes arguments of any type, objects included: they
+   stay on the server, the browser only gets an ID for the call. What the event brings comes after them, so
+   `data-on-input="rename($item)"` calls `rename($item, $value)`. Use `'` for strings inside the attribute. After each call the template renders again, and the client patches the new HTML in
    place. The focused field keeps what is being typed.
 6. `#[Every(1.0)]` on a method runs it on a timer and pushes a render. Timers stop when the tab closes.
 
@@ -298,7 +300,9 @@ components start over. It is never in a URL, a cookie or storage.
 
 - Only components listed in `LivePlugin` can be created, by selector; the browser never names a class.
 - The browser can only call public methods that the template names in a `data-on-*` attribute. Any other
-  public method stays out of reach.
+  public method stays out of reach. A method the template calls with arguments (`remove($item)`) is reachable
+  only through the IDs of the last two renders, with exactly the arguments the template bound; a click on an
+  item that is gone since does nothing.
 - Only `#[Input]` properties can be set from outside, and their values come back from the browser when it
   connects: treat them like query parameters, never as proof of identity. The user comes from the upgrade
   request (JWT, session), which the route's guards check.

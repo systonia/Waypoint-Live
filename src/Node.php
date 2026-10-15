@@ -16,6 +16,15 @@ final class Node
     /** @var list<Closure(): void> Functions that cancel this component's timers. */
     public array $timers = [];
 
+    /**
+     * @var array<string, array{string, list<mixed>}> The calls with arguments its last render bound, by the ID the
+     *     browser sends: method and arguments
+     */
+    public array $calls = [];
+
+    /** @var array<string, array{string, list<mixed>}> Those of the render before: a click may still be on its way. */
+    public array $lastCalls = [];
+
     /** A top-level component's last render sent to the browser. */
     public ?string $sent = null;
 

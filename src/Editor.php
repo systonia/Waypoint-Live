@@ -88,7 +88,7 @@ final class Editor implements Provider, Tokens
         }
         // An action in a template: its method
         $class = $this->templateOf($file);
-        if ($class !== null && preg_match_all('/\bdata-on-[a-z]+="(\w+)"/', $text, $actions, PREG_OFFSET_CAPTURE | PREG_SET_ORDER) > 0) {
+        if ($class !== null && preg_match_all('/\bdata-on-[a-z]+="(\w+)["(]/', $text, $actions, PREG_OFFSET_CAPTURE | PREG_SET_ORDER) > 0) {
             foreach ($actions as [, [$name, $start]]) {
                 if ($offset >= $start && $offset <= $start + strlen($name) && method_exists($class, $name)) {
                     $method = new ReflectionMethod($class, $name);
@@ -133,6 +133,12 @@ final class Editor implements Provider, Tokens
                 self::token($tokens, $text, $to, $found['end'], 'keyword');
             }
             self::php($tokens, $text, $from, $to);
+        }
+        // data-on-click="remove($item)": the method and its arguments, which are PHP
+        preg_match_all('/\bdata-on-[a-z]+="(\w+)\(([^"]*)\)"/', $text, $calls, PREG_OFFSET_CAPTURE | PREG_SET_ORDER);
+        foreach ($calls as [, [$name, $start], [$args, $from]]) {
+            self::token($tokens, $text, $start, $start + strlen($name), 'method');
+            self::php($tokens, $text, $from, $from + strlen($args));
         }
         return $tokens;
     }

@@ -89,9 +89,12 @@ final class Problems
         }
         $problems = [];
         preg_match_all('/\bdata-on-([a-z]+)="([^"]*)"/', $source, $found, PREG_OFFSET_CAPTURE | PREG_SET_ORDER);
-        foreach ($found as [[$attribute, $offset], , [$name]]) {
+        foreach ($found as [[$attribute, $offset], , [$value]]) {
+            // A method, or a call with arguments the server binds: remove($item)
+            $name = preg_match('/^([A-Za-z_]\w*)(?:\(.*\))?$/s', $value, $m) === 1 ? $m[1] : null;
             $message = match (true) {
-                preg_match('/^[A-Za-z_]\w*$/', $name) !== 1 => "$attribute: name a method, without parentheses or arguments (an argument goes in data-arg)",
+                $name === null => "$attribute: name a method, or call one with arguments: remove(\$item)"
+                    . (str_contains($value, '(') ? ". A \" ends the attribute: use ' for strings" : ''),
                 !$reflection->hasMethod($name) => "$attribute: $short has no method $name()" . self::didYouMean($name, $callable, '()'),
                 !$reflection->getMethod($name)->isPublic() => "$attribute: $short::$name() is not public, the browser cannot call it",
                 $reflection->getMethod($name)->isStatic() => "$attribute: $short::$name() is static, the browser calls methods of the component",

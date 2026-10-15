@@ -4,7 +4,7 @@ namespace Waypoint\Live\Tests;
 
 use PHPUnit\Framework\TestCase;
 use Waypoint\Live\Editor;
-use Waypoint\Live\Tests\Fixtures\{Counter, Item, ItemList};
+use Waypoint\Live\Tests\Fixtures\{Counter, Item, ItemList, Shop};
 
 /** The repo is the project: its autoload-dev directory holds the fixture components. */
 final class EditorTest extends TestCase
@@ -70,11 +70,13 @@ final class EditorTest extends TestCase
         $action = $this->editor()->definition(self::FIXTURES . '/ItemList.Template.php', $text, strpos($text, 'drop') + 1);
         $this->assertSame(['file' => (new \ReflectionClass(ItemList::class))->getFileName(), 'line' => 24], $action);
         $this->assertNull($this->editor()->definition(self::FIXTURES . '/ItemList.Template.php', $text, strpos($text, 'button')));
+        $call = $this->editor()->definition(self::FIXTURES . '/Shop.Template.php', '<b data-on-click="remove($product)">', 20);
+        $this->assertSame(['file' => (new \ReflectionClass(Shop::class))->getFileName(), 'line' => 22], $call);
     }
 
     public function testTheFixtureTemplatesHaveNoProblems(): void
     {
-        foreach (['Counter', 'ItemList', 'Item'] as $name) {
+        foreach (['Counter', 'ItemList', 'Item', 'Shop'] as $name) {
             $file = self::FIXTURES . "/$name.Template.php";
             $this->assertSame([], $this->problems($file, (string) file_get_contents($file)), $name);
         }
@@ -85,8 +87,11 @@ final class EditorTest extends TestCase
         $this->assertSame([
             '2 error: data-on-click="ad": Counter has no method ad(). Did you mean add()?',
             '3 error: data-on-click="tick": Counter::tick() is not public, the browser cannot call it',
-            '4 error: data-on-click="add(1)": name a method, without parentheses or arguments (an argument goes in data-arg)',
-        ], $this->problems(self::FIXTURES . '/Counter.Template.php', "<p>\n<b data-on-click=\"ad\">\n<b data-on-click=\"tick\">\n<b data-on-click=\"add(1)\">"));
+            '4 error: data-on-click="add(": name a method, or call one with arguments: remove($item). A " ends the attribute: use \' for strings',
+            '5 error: data-on-click="ad(1)": Counter has no method ad(). Did you mean add()?',
+        ], $this->problems(self::FIXTURES . '/Counter.Template.php', "<p>\n<b data-on-click=\"ad\">\n<b data-on-click=\"tick\">\n<b data-on-click=\"add(\"1\")\">\n<b data-on-click=\"ad(1)\"><b data-on-click=\"add(2)\">"));
+        // The arguments are PHP: checked like an echo, at their line
+        $this->assertSame(["2 error: syntax error, unexpected token \"]\""], $this->problems(self::FIXTURES . '/Counter.Template.php', "<p>\n<b data-on-click=\"add(1 +)\">"));
     }
 
     public function testProblemsInChildTags(): void
@@ -137,6 +142,8 @@ final class EditorTest extends TestCase
             '5:0 @endif keyword',
         ], array_values(array_filter($tokens, static fn (string $t) => !str_ends_with($t, ' operator'))));
         $this->assertContains('4:10 -> operator', $tokens);
+        $call = $this->editor()->tokens(self::FIXTURES . '/Shop.Template.php', '<b data-on-click="remove($product)">');
+        $this->assertSame([[1, 18, 6, 'method'], [1, 25, 8, 'variable']], array_map(static fn (array $t) => [$t['line'], $t['column'], $t['length'], $t['type']], $call));
         $this->assertSame([], $this->editor()->tokens(self::FIXTURES . '/view.php', $text));
     }
 
