@@ -140,6 +140,9 @@ final class Circuit
     /** The browser is gone for good: every timer stops, the components are dropped. */
     public function close(): void
     {
+        foreach ($this->nodes as $node) {
+            $this->live->failed($this->key($node->id), null);
+        }
         $this->detach();
         $this->nodes = [];
         $this->roots = 0;
@@ -183,7 +186,14 @@ final class Circuit
     {
         ($this->report)($e);
         $error = $this->live->isDev() ? Failure::describe($e, $this->cause, $selector) : true;
+        $this->live->failed($this->key($id), $error === true ? null : $error);
         ($this->send)(json_encode(['id' => $id, 'error' => $error], JSON_THROW_ON_ERROR | JSON_INVALID_UTF8_SUBSTITUTE));
+    }
+
+    /** A top-level component of this tab, children included: what the editor shows until it renders again. */
+    private function key(string $id): string
+    {
+        return 'tab ' . spl_object_id($this) . ' ' . explode('.', $id)[0];
     }
 
     /**
@@ -353,6 +363,7 @@ final class Circuit
             return;
         }
         $html = $this->html($node);
+        $this->live->failed($this->key($node->id), null);
         if (!$onlyIfChanged || $html !== $node->sent) {
             $node->sent = $html;
             ($this->send)(json_encode(['id' => $node->id, 'html' => $html], JSON_THROW_ON_ERROR));

@@ -252,7 +252,8 @@ final class CircuitTest extends TestCase
     {
         foreach ([false, true] as $dev) {
             $this->sent = [];
-            $circuit = $this->circuit(live: $this->plugin($dev));
+            $live = $this->plugin($dev);
+            $circuit = $this->circuit(live: $live);
             $circuit->handle($this->message(['t' => 'mount', 'id' => 'c0', 'c' => 'test-fragile', 'p' => []]));
             $circuit->handle($this->message(['t' => 'call', 'id' => 'c0', 'm' => 'toggle', 'a' => []]));
             $error = $this->sent[1]['error'];
@@ -264,6 +265,12 @@ final class CircuitTest extends TestCase
             $this->assertStringEndsWith('/Fixtures/Fragile.Template.php', $error['file']);
             $this->assertContains([2, '<button data-on-click="toggle"><?= $this->broken ? throw new \\RuntimeException(\'broken\') : $this->label->text ?></button>'], $error['snippet']);
             $this->assertNotSame([], $error['trace']);
+
+            // The editor gets it at the template's line until the component renders again
+            $failures = new \ReflectionProperty($live, 'failures');
+            $this->assertSame([[$error['file'], 2, '<test-fragile> call "toggle": RuntimeException: broken']], array_map(static fn (array $f) => array_values($f), array_values($failures->getValue($live))));
+            $circuit->handle($this->message(['t' => 'call', 'id' => 'c0', 'm' => 'toggle', 'a' => []]));
+            $this->assertSame([], $failures->getValue($live));
         }
     }
 

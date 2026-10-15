@@ -31,6 +31,9 @@ final class LivePlugin extends PluginBase implements ViewHelper, ClientAsset, Re
 
     private LiveOptions $options;
 
+    /** @var array<string, array{file: string, line: int, message: string}> In dev: what failed and not yet rendered again, for the editor */
+    private array $failures = [];
+
     /** @param list<class-string> $components Classes with a #[Component] attribute; other plugins add theirs to Components */
     public function __construct(array $components = [])
     {
@@ -62,11 +65,12 @@ final class LivePlugin extends PluginBase implements ViewHelper, ClientAsset, Re
         if ($this->dev && class_exists(\Tenma::class, false)) {
             // ponytail: polls 4 times a second; a watcher from Tenma once a second user needs one
             \Tenma::setInterval(function () use ($broadcast, $logger): void {
-                $changed = $this->components->reload(static function (string $file, ?Throwable $e) use ($broadcast, $logger): void {
+                $changed = $this->components->reload(function (string $file, ?Throwable $e) use ($broadcast, $logger): void {
                     if ($e !== null) {
                         $logger->error('live: ' . $e->getMessage(), ['exception' => $e]);
                     }
                     $broadcast->problem($file, $e);
+                    $this->failed("template $file", $e === null ? null : Failure::describe($e, 'template saved'));
                 });
                 if ($changed) {
                     $broadcast->changedHere();
@@ -79,6 +83,29 @@ final class LivePlugin extends PluginBase implements ViewHelper, ClientAsset, Re
     public function isDev(): bool
     {
         return $this->dev;
+    }
+
+    /**
+     * @internal In dev: what failed under $key (a component of a tab, a template), or null once it works again. The
+     * editor shows the failures at their line, through Tenma::diagnostics() and `tenma lsp`.
+     *
+     * @param array{file: string, line: int, message: string, class: string, cause: string, selector: ?string}|null $failure
+     */
+    public function failed(string $key, ?array $failure): void
+    {
+        if (!$this->dev || ($failure === null && !isset($this->failures[$key]))) {
+            return;
+        }
+        if ($failure === null) {
+            unset($this->failures[$key]);
+        } else {
+            $where = ($failure['selector'] !== null ? "<{$failure['selector']}> " : '') . $failure['cause'];
+            $this->failures[$key] = ['file' => $failure['file'], 'line' => $failure['line'], 'message' => "$where: {$failure['class']}: {$failure['message']}"];
+        }
+        // Under a Tenma that has it; a list per worker, the last one wins
+        if (function_exists('Tenma\\Internal\\diagnostics')) {
+            \Tenma::diagnostics('waypoint-live', array_values($this->failures));
+        }
     }
 
     /** @internal In dev: how the browser links a file to the editor, `{file}` and `{line}` filled in. */
