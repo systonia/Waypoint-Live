@@ -46,7 +46,7 @@ final class CircuitTest extends TestCase
 
     private function plugin(bool $dev = false): LivePlugin
     {
-        $live = new LivePlugin([Counter::class, ItemList::class, Item::class, BasketButton::class, BasketBadge::class, Fragile::class, Uploader::class, Visitor::class, Bouncer::class, Chat::class, Shop::class, Ticker::class]);
+        $live = new LivePlugin([Counter::class, ItemList::class, Item::class, BasketButton::class, BasketBadge::class, Fragile::class, Uploader::class, Visitor::class, Bouncer::class, Chat::class, Shop::class, Ticker::class, \Waypoint\Live\Tests\Fixtures\Gauge::class]);
         $container = new Container();
         $container->set(new Label('fine'));
         $container->set(new Room());
@@ -178,6 +178,17 @@ final class CircuitTest extends TestCase
         } finally {
             \Waypoint\Waypoint::reset();
         }
+    }
+
+    public function testInDevAPropertyThatIsNanStillRendersAndInspects(): void
+    {
+        $circuit = $this->circuit(live: $this->plugin(true));
+        $circuit->handle($this->message(['t' => 'mount', 'id' => 'c0', 'c' => 'app-gauge', 'p' => []]));
+        $circuit->handle($this->message(['t' => 'inspect', 'id' => 'c0']));
+        $this->assertSame("<b>unknown</b>\n", $this->sent[0]['html']);
+        $this->assertSame([], $this->sent[0]['state']['c0']);
+        $this->assertSame('NAN', end($this->sent)['state']['state']['value']);
+        $this->assertSame([], $this->reported);
     }
 
     public function testChildrenGetIdsKeepTheirStateAndCallBackIntoTheParent(): void

@@ -218,6 +218,7 @@ final class Circuit
             is_object($value) => '<' . $value::class . '>',
             is_array($value) => $depth > 3 ? '[…]' : array_map(static fn (mixed $item) => self::shown($item, $depth + 1), array_slice($value, 0, 50, true)),
             is_resource($value) => '<resource>',
+            is_float($value) && !is_finite($value) => (string) $value,
             default => $value,
         };
     }
@@ -483,9 +484,10 @@ final class Circuit
         return $states;
     }
 
+    /** What JSON carries as it is: NAN and INF are no JSON numbers */
     private static function plain(mixed $value): bool
     {
-        return is_scalar($value) || $value === null || (is_array($value) && array_all($value, self::plain(...)));
+        return (is_scalar($value) && !(is_float($value) && !is_finite($value))) || $value === null || (is_array($value) && array_all($value, self::plain(...)));
     }
 
     /**
