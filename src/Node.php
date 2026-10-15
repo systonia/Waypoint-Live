@@ -35,7 +35,8 @@ final class Node
         public readonly string $id,
         public readonly string $selector,
         public readonly object $component,
-        public readonly Template $template,
+        /** Taken again before each render: in dev a saved template replaces it. */
+        public Template $template,
         public readonly ?Node $root,
     ) {
     }

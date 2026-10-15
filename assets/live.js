@@ -16,6 +16,8 @@
     // The server's circuit for this tab: on a reconnect it hands back the components with their state
     let token = null;
     let attempt = 0;
+    // In dev, the server process the page came from: another one means PHP was reloaded, and the page with it
+    let boot = null;
 
     const send = (message) => {
         if (ready) socket.send(JSON.stringify(message));
@@ -33,6 +35,11 @@
                 return;
             }
             if (message.t === 'circuit') {
+                if (message.boot && boot !== null && message.boot !== boot && !message.resumed) {
+                    location.reload();
+                    return;
+                }
+                boot = message.boot ?? null;
                 token = message.token;
                 attempt = 0;
                 // A new circuit (first connection, or the old one expired): the components start from the page's

@@ -2,9 +2,11 @@
 
 namespace Waypoint\Live;
 
+use Closure;
 use InvalidArgumentException;
 use LogicException;
 use ReflectionClass;
+use Throwable;
 
 /**
  * The app's live components: those given to LivePlugin, and those another plugin adds in its boot(), as
@@ -18,6 +20,9 @@ final class Components
 
     /** @var array<string, array{class-string, Template}>|null */
     private ?array $compiled = null;
+
+    /** @var array<string, string> selector => hash of the template file it was compiled from */
+    private array $hashes = [];
 
     /** @param class-string ...$classes Classes with a #[Component] attribute */
     public function add(string ...$classes): self
@@ -72,10 +77,40 @@ final class Components
             // Each template expands the others' tags: compiled once all of them are known, kept only if all compile
             $compiled = [];
             foreach ($this->found as $selector => [$class, $path]) {
+                $this->hashes[$selector] = (string) md5_file($path);
                 $compiled[$selector] = [$class, new Template($path, $this->selectors())];
             }
             $this->compiled = $compiled;
         }
         return $this->compiled;
+    }
+
+    /**
+     * @internal In dev: compiles the templates whose file changed since again. One that no longer compiles keeps
+     * its last version and goes to $report. Whether any template changed.
+     *
+     * @param Closure(Throwable): void $report
+     */
+    public function reload(Closure $report): bool
+    {
+        if ($this->compiled === null) {
+            return false;
+        }
+        $changed = false;
+        foreach ($this->found as $selector => [$class, $path]) {
+            // Content, not the time: an editor that saves without a change changes nothing
+            $hash = is_file($path) ? (string) md5_file($path) : '';
+            if ($hash === $this->hashes[$selector]) {
+                continue;
+            }
+            $this->hashes[$selector] = $hash;
+            try {
+                $this->compiled[$selector] = [$class, new Template($path, $this->selectors())];
+                $changed = true;
+            } catch (Throwable $e) {
+                $report($e);
+            }
+        }
+        return $changed;
     }
 }

@@ -333,6 +333,16 @@ gives a template:
 
 A changed component is seen once it is saved.
 
+## Development
+
+With `APP_ENV=development` (Waypoint's `Environment::isDev()`) and `tenma --watch`:
+
+- A saved template renders at once in every open tab, and the components keep their state. A template that no
+  longer compiles keeps the last one that did; the error goes to the log.
+- A saved PHP file restarts the workers (`--watch`), and the open pages load again by themselves.
+
+In production neither happens.
+
 ## Limits of the proof of concept
 
 - A circuit lives in the memory of one worker. With several workers a reconnect can land on another one and

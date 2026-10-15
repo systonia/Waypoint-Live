@@ -334,6 +334,7 @@ final class Circuit
     /** The node's template, with its children's tags rendered; children no longer placed are removed. */
     private function html(Node $node): string
     {
+        $node->template = $this->live->template($node->selector) ?? $node->template;
         $positions = [];
         $placed = [];
         $node->lastCalls = $node->calls;

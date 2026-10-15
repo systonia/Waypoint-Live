@@ -6,6 +6,8 @@ use Closure;
 use PHPUnit\Framework\TestCase;
 use Throwable;
 use Waypoint\Container;
+use Waypoint\Environment;
+use Waypoint\Logger;
 use Waypoint\Http\{Request, Response};
 use Waypoint\Live\{Circuit, Components, LivePlugin};
 use Waypoint\Live\Tests\Fixtures\{BasketBadge, BasketButton, Chat, Counter, Fragile, Item, ItemList, Label, Bouncer, Room, Shop, Uploader, Visitor};
@@ -48,8 +50,23 @@ final class CircuitTest extends TestCase
         $container = new Container();
         $container->set(new Label('fine'));
         $container->set(new Room());
-        $live->boot($container);
+        $live->boot($container, self::environment(), new Logger());
         return $live;
+    }
+
+    /** The app's environment without an app: production unless $dev */
+    private static function environment(bool $dev = false): Environment
+    {
+        return new class ($dev) extends Environment {
+            public function __construct(private bool $dev)
+            {
+            }
+
+            public function isDev(): bool
+            {
+                return $this->dev;
+            }
+        };
     }
 
     private function message(array $message): string
@@ -191,6 +208,44 @@ final class CircuitTest extends TestCase
         $circuit->handle($this->message(['t' => 'call', 'id' => 'c0', 'm' => 'remove', 'a' => []]));
         $this->assertSame([['id' => 'c0', 'error' => true]], $this->sent);
         $this->assertCount(1, $this->reported);
+    }
+
+    public function testASavedTemplateRendersInEveryTabAndKeepsTheState(): void
+    {
+        // A component of its own in a temporary directory: its template gets rewritten
+        $dir = sys_get_temp_dir() . '/live-hot-' . bin2hex(random_bytes(4));
+        mkdir($dir);
+        $class = 'HotCounter' . bin2hex(random_bytes(4));
+        file_put_contents("$dir/$class.php", "<?php\nnamespace Waypoint\\Live\\Tests\\Fixtures;\n#[\\Waypoint\\Live\\Component(\n    selector: 'test-hot',\n    template: 'Hot.Template.php'\n)]\nfinal class $class\n{\n    public int \$count = 0;\n\n    public function add(): void\n    {\n        \$this->count++;\n    }\n}\n");
+        file_put_contents("$dir/Hot.Template.php", '<b data-on-click="add">{{ $this->count }}</b>');
+        try {
+            require "$dir/$class.php";
+            $live = new LivePlugin(["Waypoint\\Live\\Tests\\Fixtures\\$class"]);
+            $live->boot(new Container(), self::environment(), new Logger());
+            $components = (new \ReflectionProperty($live, 'components'))->getValue($live);
+            $circuit = $this->circuit(live: $live);
+            $circuit->handle($this->message(['t' => 'mount', 'id' => 'c0', 'c' => 'test-hot', 'p' => []]));
+            $circuit->handle($this->message(['t' => 'call', 'id' => 'c0', 'm' => 'add', 'a' => []]));
+            $this->assertFalse($components->reload(static fn () => null));
+
+            file_put_contents("$dir/Hot.Template.php", '<i data-on-click="add">{{ $this->count }}</i>');
+            $this->assertTrue($components->reload(static fn () => null));
+            $circuit->changed();
+            $this->assertSame(['id' => 'c0', 'html' => '<i data-on-click="add">1</i>'], end($this->sent));
+
+            // A template that no longer compiles keeps the last one, and is reported
+            file_put_contents("$dir/Hot.Template.php", '@if ($this->count) <i>');
+            $errors = [];
+            $this->assertFalse($components->reload(static function (Throwable $e) use (&$errors): void {
+                $errors[] = $e->getMessage();
+            }));
+            $this->assertStringContainsString('@if has no @endif', $errors[0]);
+            $circuit->handle($this->message(['t' => 'call', 'id' => 'c0', 'm' => 'add', 'a' => []]));
+            $this->assertSame(['id' => 'c0', 'html' => '<i data-on-click="add">2</i>'], end($this->sent));
+        } finally {
+            array_map('unlink', glob("$dir/*") ?: []);
+            rmdir($dir);
+        }
     }
 
     public function testThePageRendersChildrenWithRelativeIds(): void
@@ -358,7 +413,7 @@ final class CircuitTest extends TestCase
         $live = new LivePlugin([Counter::class]);
         $container = new Container();
         $container->set(new Label('fine'));
-        $live->boot($container);
+        $live->boot($container, self::environment(), new Logger());
         // What a plugin that requires LivePlugin does in its own boot()
         $container->get(Components::class)->add(ItemList::class, Item::class);
 

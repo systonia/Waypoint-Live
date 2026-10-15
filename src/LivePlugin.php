@@ -4,7 +4,10 @@ namespace Waypoint\Live;
 
 use InvalidArgumentException;
 use ReflectionProperty;
+use Throwable;
 use Waypoint\Container;
+use Waypoint\Environment;
+use Waypoint\Logger;
 use Waypoint\Http\{Request, Response};
 use Waypoint\Plugin\{ClientAsset, PluginBase, ResponseHook, ViewHelper};
 use Waypoint\Routing\PropertyInjector;
@@ -24,6 +27,8 @@ final class LivePlugin extends PluginBase implements ViewHelper, ClientAsset, Re
 
     private PageRequest $page;
 
+    private bool $dev = false;
+
     /** @param list<class-string> $components Classes with a #[Component] attribute; other plugins add theirs to Components */
     public function __construct(array $components = [])
     {
@@ -41,12 +46,36 @@ final class LivePlugin extends PluginBase implements ViewHelper, ClientAsset, Re
         return 'live';
     }
 
-    public function boot(Container $container): void
+    public function boot(Container $container, Environment $environment, Logger $logger): void
     {
         $this->container = $container;
+        $this->dev = $environment->isDev();
+        $broadcast = new Broadcast();
         $container->set($this);
         $container->set($this->components);
-        $container->set(new Broadcast());
+        $container->set($broadcast);
+        // In dev a saved template shows at once, in every open tab and with its state: --watch restarts the
+        // workers only for PHP that was included, and a template is read
+        if ($this->dev && class_exists(\Tenma::class, false)) {
+            // ponytail: polls 4 times a second; a watcher from Tenma once a second user needs one
+            \Tenma::setInterval(function () use ($broadcast, $logger): void {
+                if ($this->components->reload(static fn (Throwable $e) => $logger->error('live: ' . $e->getMessage(), ['exception' => $e]))) {
+                    $broadcast->changedHere();
+                }
+            }, 0.25);
+        }
+    }
+
+    /** @internal Whether the app runs in development: then the browser gets details meant for its developer. */
+    public function isDev(): bool
+    {
+        return $this->dev;
+    }
+
+    /** @internal The template a selector renders with now: in dev a saved one replaces the last. */
+    public function template(string $selector): ?Template
+    {
+        return $this->components->get($selector)[1] ?? null;
     }
 
     public function classes(): array
