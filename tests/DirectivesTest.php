@@ -27,6 +27,14 @@ final class DirectivesTest extends TestCase
         $this->assertSame(substr_count($source, "\n"), substr_count($php, "\n"));
     }
 
+    public function testAChildTagOverSeveralLinesKeepsTheLinesAfterIt(): void
+    {
+        $source = "<app-row\n  key=\"{{ \$a }}\"\n  name=\"x\ny\"\n></app-row>\n{{ \$b }}\n";
+        $php = Template::compile($source, ['app-row']);
+        $this->assertSame(substr_count($source, "\n"), substr_count($php, "\n"));
+        $this->assertStringContainsString('$b', explode("\n", $php)[5]);
+    }
+
     public function testTextAndPhpStayAsTheyAre(): void
     {
         foreach ([

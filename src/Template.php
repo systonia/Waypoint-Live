@@ -147,8 +147,11 @@ final class Template
             foreach ($attributes as $attribute) {
                 $inputs[] = var_export($attribute[1], true) . ' => ' . self::value($attribute[2] ?? null);
             }
+            $code = '<?php echo $__child(' . var_export($m[1], true) . ', [' . implode(', ', $inputs) . '])' . ($m[3] !== '' ? ', "\n"' : '') . ';';
+            // A tag over several lines keeps them, as blank lines in the PHP: the lines after it stay where they are
+            $code .= str_repeat("\n", max(0, substr_count($m[0], "\n") - strlen($m[3]) - substr_count($code, "\n")));
             // PHP swallows a newline after a closing tag: echo it instead, so the output and the line numbers stay put
-            return '<?php echo $__child(' . var_export($m[1], true) . ', [' . implode(', ', $inputs) . '])' . ($m[3] !== '' ? ', "\n"' : '') . '; ?>' . $m[3];
+            return $code . ' ?>' . $m[3];
         }, $source);
     }
 
