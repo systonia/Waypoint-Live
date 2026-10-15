@@ -31,6 +31,11 @@ final class LivePlugin extends PluginBase implements ViewHelper, ClientAsset, Re
 
     private LiveOptions $options;
 
+    private Logger $logger;
+
+    /** @var array<string, true> In dev: the warnings about pages already logged by this worker */
+    private array $warned = [];
+
     /** @var array<string, array{file: string, line: int, message: string}> In dev: what failed and not yet rendered again, for the editor */
     private array $failures = [];
 
@@ -56,6 +61,7 @@ final class LivePlugin extends PluginBase implements ViewHelper, ClientAsset, Re
         $this->container = $container;
         $this->dev = $environment->isDev();
         $this->options = $options;
+        $this->logger = $logger;
         $broadcast = new Broadcast();
         $container->set($this);
         $container->set($this->components);
@@ -64,16 +70,22 @@ final class LivePlugin extends PluginBase implements ViewHelper, ClientAsset, Re
         // workers only for PHP that was included, and a template is read
         if ($this->dev && class_exists(\Tenma::class, false)) {
             // ponytail: polls 4 times a second; a watcher from Tenma once a second user needs one
-            \Tenma::setInterval(function () use ($broadcast, $logger): void {
+            $checked = false;
+            \Tenma::setInterval(function () use ($broadcast, $logger, &$checked): void {
                 $changed = $this->components->reload(function (string $file, ?Throwable $e) use ($broadcast, $logger): void {
                     if ($e !== null) {
                         $logger->error('live: ' . $e->getMessage(), ['exception' => $e]);
                     }
+                    // The editor gets it from check() below
                     $broadcast->problem($file, $e);
-                    $this->failed("template $file", $e === null ? null : Failure::describe($e, 'template saved'));
                 });
                 if ($changed) {
                     $broadcast->changedHere();
+                }
+                // Once the plugins have added theirs, and after every saved template
+                if (!$checked || $changed) {
+                    $checked = true;
+                    $this->check($logger);
                 }
             }, 0.25);
         }
@@ -86,7 +98,23 @@ final class LivePlugin extends PluginBase implements ViewHelper, ClientAsset, Re
     }
 
     /**
-     * @internal In dev: what failed under $key (a component of a tab, a template), or null once it works again. The
+     * In dev: what Problems finds in all components goes to the terminal and the editor (Tenma::diagnostics()),
+     * or to the log under a Tenma without it.
+     */
+    private function check(Logger $logger): void
+    {
+        $problems = $this->components->check();
+        if (function_exists('Tenma\\Internal\\diagnostics')) {
+            \Tenma::diagnostics('waypoint-live:check', $problems);
+            return;
+        }
+        foreach ($problems as $problem) {
+            $logger->warning("live: {$problem['file']}:{$problem['line']}: {$problem['message']}");
+        }
+    }
+
+    /**
+     * @internal In dev: what failed under $key (a component of a tab), or null once it renders again. The
      * editor shows the failures at their line, through Tenma::diagnostics() and `tenma lsp`.
      *
      * @param array{file: string, line: int, message: string, class: string, cause: string, selector: ?string}|null $failure
@@ -193,7 +221,7 @@ final class LivePlugin extends PluginBase implements ViewHelper, ClientAsset, Re
             return;
         }
         $selectors = implode('|', array_map(static fn (string $s) => preg_quote($s, '/'), $this->components->selectors()));
-        $res->mapBody(fn (string $body): string => (string) preg_replace_callback(
+        $res->mapBody(fn (string $body): string => $this->warn((string) preg_replace_callback(
             '/<(' . $selectors . ')((?:\s+[A-Za-z_][\w.:-]*="[^"]*")*)\s*(?:\/>|>\s*<\/\1>)/',
             function (array $m) use ($req): string {
                 preg_match_all('/\s+([A-Za-z_][\w.:-]*)="([^"]*)"/', $m[2], $attributes, PREG_SET_ORDER);
@@ -209,7 +237,22 @@ final class LivePlugin extends PluginBase implements ViewHelper, ClientAsset, Re
                 return Circuit::page($this, $m[1], $inputs, $rest, $req);
             },
             $body,
-        ));
+        )));
+    }
+
+    /** In dev: logs what Problems finds in a rendered page, each once; the page as it is. */
+    private function warn(string $page): string
+    {
+        if ($this->dev) {
+            $classes = array_map(static fn (array $found) => $found[0], $this->components->sources());
+            foreach (Problems::inPage($page, $classes) as $message) {
+                if (!isset($this->warned[$message])) {
+                    $this->warned[$message] = true;
+                    $this->logger->warning("live: in a page, $message");
+                }
+            }
+        }
+        return $page;
     }
 
     /** A new circuit's services: its own #[Scoped] ones, the app's for the rest. */

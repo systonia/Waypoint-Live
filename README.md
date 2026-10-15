@@ -347,6 +347,12 @@ With `APP_ENV=development` (Waypoint's `Environment::isDev()`) and `tenma --watc
 - A saved template renders at once in every open tab, and the components keep their state. A template that no
   longer compiles keeps the last one that did.
 - A saved PHP file restarts the workers (`--watch`), and the open pages load again by themselves.
+- Every component and its template are checked once the app has started and after every saved template:
+  actions the component lacks, attributes that are no input of the child, tags that stay as they are, PHP that
+  does not parse, directives that do not close, timers that cannot run, inputs the page cannot set. The
+  problems go to the terminal and, through `Tenma::diagnostics()`, to the editor, also for templates that are
+  not open. A page that uses a tag close to a selector, or an attribute close to an input, gets a warning in
+  the log.
 - An error shows in the page: what failed, in which component and after which event, the template's lines
   around it and the stack, with links that open the file in the editor. The overlay closes when the component
   renders again. A template that no longer compiles shows there too, until it is saved without the mistake.

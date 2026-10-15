@@ -37,6 +37,49 @@ final class Problems
     }
 
     /**
+     * Mistakes in a component's class: a timer that cannot run, an input the page cannot set.
+     *
+     * @param class-string $class
+     * @return list<array{line: int, message: string, severity: 'error'}>
+     */
+    public static function inComponent(string $class): array
+    {
+        $reflection = new ReflectionClass($class);
+        $problems = [];
+        foreach ($reflection->getMethods() as $method) {
+            foreach ($method->getAttributes(Every::class) as $attribute) {
+                $message = match (true) {
+                    $method->getNumberOfRequiredParameters() > 0 => "#[Every] {$method->getName()}(): a timer calls its method without arguments",
+                    $method->isStatic() => "#[Every] {$method->getName()}(): a timer calls a method of the component, not a static one",
+                    $attribute->newInstance()->seconds <= 0 => "#[Every] {$method->getName()}(): the seconds must be more than 0",
+                    default => null,
+                };
+                if ($message !== null) {
+                    $problems[] = ['line' => (int) $method->getStartLine(), 'message' => $message, 'severity' => 'error'];
+                }
+            }
+        }
+        $source = (string) @file_get_contents((string) $reflection->getFileName());
+        foreach ($reflection->getProperties() as $property) {
+            if ($property->getAttributes(Input::class) === [] || $property->getDeclaringClass()->getName() !== $class) {
+                continue;
+            }
+            $message = match (true) {
+                !$property->isPublic() => 'is not public',
+                $property->isStatic() => 'is static',
+                $property->isReadOnly() => 'is readonly',
+                default => null,
+            };
+            if ($message !== null) {
+                // Reflection knows no line of a property: where its name is declared
+                $at = preg_match('/^.*\$' . $property->getName() . '\b/m', $source, $m, PREG_OFFSET_CAPTURE) === 1 ? $m[0][1] : 0;
+                $problems[] = ['line' => self::line($source, $at), 'message' => "#[Input] \${$property->getName()} $message: the page and parent templates set inputs from outside", 'severity' => 'error'];
+            }
+        }
+        return $problems;
+    }
+
+    /**
      * @param list<string> $selectors
      * @return list<array{line: int, message: string, severity: 'error'}>
      */
@@ -146,6 +189,45 @@ final class Problems
             }
         }
         return $problems;
+    }
+
+    /**
+     * In a rendered page, after its tags were expanded: a component's tag that stayed as it was, an attribute close
+     * to an input of its component, a tag close to a selector. Warnings: the page renders anyway.
+     *
+     * @param array<string, class-string> $components
+     * @return list<string>
+     */
+    public static function inPage(string $html, array $components): array
+    {
+        $messages = [];
+        preg_match_all('/<([a-z][a-z0-9]*(?:-[a-z0-9]+)+)((?:\s[^>]*)?)>/', $html, $tags, PREG_SET_ORDER);
+        foreach ($tags as [, $selector, $attributes]) {
+            $class = $components[$selector] ?? null;
+            if ($class === null) {
+                $close = self::didYouMean($selector, array_keys($components), '', '<', '>');
+                if ($close !== '') {
+                    $messages[] = "<$selector> is no component$close Or is it missing from new LivePlugin([...])?";
+                }
+                continue;
+            }
+            if (preg_match('/\sdata-live\b/', $attributes) !== 1) {
+                $messages[] = "<$selector> stays as it is: a component's tag needs attributes in double quotes and an empty body, <$selector ...></$selector>";
+                continue;
+            }
+            $inputs = array_values(array_filter(
+                array_map(static fn (\ReflectionProperty $p) => $p->getName(), (new ReflectionClass($class))->getProperties()),
+                static fn (string $name) => LivePlugin::isInput($class, $name),
+            ));
+            preg_match_all('/\s([A-Za-z_][\w.:-]*)=/', $attributes, $names);
+            foreach ($names[1] as $name) {
+                $close = self::didYouMean($name, $inputs, '');
+                if ($close !== '' && !in_array($name, $inputs, true)) {
+                    $messages[] = "<$selector $name>: '$name' stays an attribute of the tag, it is no #[Input]$close";
+                }
+            }
+        }
+        return array_values(array_unique($messages));
     }
 
     /** @param list<string> $candidates */

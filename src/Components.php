@@ -87,6 +87,27 @@ final class Components
     }
 
     /**
+     * @internal Every mistake in the components and their templates that Problems finds, with its file: in dev,
+     * for the terminal and the editor, before a page or a click runs into it.
+     *
+     * @return list<array{file: string, line: int, message: string, severity: 'error'|'warning'}>
+     */
+    public function check(): array
+    {
+        $classes = array_map(static fn (array $found) => $found[0], $this->found);
+        $problems = [];
+        foreach ($this->found as [$class, $path]) {
+            foreach (Problems::inTemplate((string) @file_get_contents($path), $class, $classes) as $problem) {
+                $problems[] = ['file' => $path] + $problem;
+            }
+            foreach (Problems::inComponent($class) as $problem) {
+                $problems[] = ['file' => (string) (new ReflectionClass($class))->getFileName()] + $problem;
+            }
+        }
+        return $problems;
+    }
+
+    /**
      * @internal In dev: compiles the templates whose file changed since again. One that no longer compiles keeps
      * its last version and goes to $report with its error, one that compiles goes there with null. Whether any
      * template changed.

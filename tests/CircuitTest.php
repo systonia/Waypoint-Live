@@ -485,6 +485,27 @@ final class CircuitTest extends TestCase
         $this->assertStringEndsWith('/Fixtures/CitySign.Template.php', $components->sources()['app-city-sign'][1]);
     }
 
+    public function testTheCheckFindsTheMistakesOfAllComponentsWithTheirFiles(): void
+    {
+        $components = (new Components())->add(Counter::class, \Waypoint\Live\Tests\Fixtures\Careless::class);
+        $this->assertSame([
+            'Careless.Template.php:1 data-on-click="tik": Careless has no method tik(). Did you mean tick()?',
+            'Careless.php:15 #[Every] tick(): a timer calls its method without arguments',
+            'Careless.php:20 #[Every] never(): the seconds must be more than 0',
+            'Careless.php:12 #[Input] $hidden is not public: the page and parent templates set inputs from outside',
+        ], array_map(static fn (array $p) => basename($p['file']) . ":{$p['line']} {$p['message']}", $components->check()));
+    }
+
+    public function testAPageWarnsOfTagsThatStayAndAttributesCloseToAnInput(): void
+    {
+        $components = ['test-counter' => Counter::class, 'test-item' => Item::class];
+        $this->assertSame([
+            "<test-countr> is no component. Did you mean <test-counter>? Or is it missing from new LivePlugin([...])?",
+            "<test-item> stays as it is: a component's tag needs attributes in double quotes and an empty body, <test-item ...></test-item>",
+            "<test-counter cuont>: 'cuont' stays an attribute of the tag, it is no #[Input]. Did you mean count?",
+        ], \Waypoint\Live\Problems::inPage('<test-countr></test-countr><test-item name=\'a\'></test-item><test-counter data-live cuont="3" class="big"></test-counter><my-widget>', $components));
+    }
+
     public function testAComponentWithoutItsTemplateFailsAtBoot(): void
     {
         $this->expectException(\InvalidArgumentException::class);
