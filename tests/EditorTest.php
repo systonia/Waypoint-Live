@@ -124,14 +124,14 @@ final class EditorTest extends TestCase
 
     public function testDirectivesGetTheirColours(): void
     {
-        $text = "{{-- a\nb --}}\n@if (\$this->open)\n  {{ \$book->title() }} @@\n@endif";
+        $text = "{{/* a\nb */}}\n@if (\$this->open)\n  {{ \$book->title() }} @@\n@endif";
         $tokens = array_map(
             static fn (array $t) => "{$t['line']}:{$t['column']} " . substr(explode("\n", $text)[$t['line'] - 1], $t['column'], $t['length']) . " {$t['type']}",
             $this->editor()->tokens(self::FIXTURES . '/Shelf.Template.php', $text),
         );
         $this->assertSame([
-            '1:0 {{-- a comment',
-            '2:0 b --}} comment',
+            '1:0 {{/* a comment',
+            '2:0 b */}} comment',
             '3:0 @if keyword',
             '3:5 $this variable',
             '3:12 open property',

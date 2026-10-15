@@ -3,11 +3,11 @@
 namespace Waypoint\Live;
 
 /**
- * @internal Blade-style syntax in templates, found in the HTML between PHP tags (never inside `<?php ?>`):
+ * @internal Directives in templates, found in the HTML between PHP tags (never inside `<?php ?>`):
  *
- *     {{ expr }}            escaped, as <?= expr ?>; a lone one in a child tag's attribute passes the value itself
- *     {!! expr !!}          raw, as <?php echo expr ?>
- *     {{-- comment --}}     nothing
+ *     {{ expr }}            escaped, as <?= expr ?>; a lone one in a child tag's attribute passes the value itself;
+ *                           a value of type Html prints as it is
+ *     {{/* comment *∕}}     nothing: a PHP block comment in braces (∕ stands for /, which would end this docblock)
  *     @if (cond) @elseif (cond) @else @endif
  *     @foreach (expr) @endforeach
  *     @@                    a literal @
@@ -23,7 +23,7 @@ final class Directives
     private const WITHOUT = ['else', 'endif', 'endforeach'];
 
     /**
-     * @var list<array{kind: 'echo'|'raw'|'comment'|'directive'|'broken'|'at', start: int, end: int, name?: string, expression?: array{int, int}}>
+     * @var list<array{kind: 'echo'|'comment'|'directive'|'broken'|'at', start: int, end: int, name?: string, expression?: array{int, int}}>
      *     What was found, by byte offsets: `expression` is the PHP inside, `name` the directive's; a broken
      *     directive (no parentheses) stays as written
      */
@@ -66,8 +66,7 @@ final class Directives
         $newline = ($this->source[$found['end']] ?? '') === "\n" ? ', "\n"' : '';
         return match ($found['kind']) {
             'echo' => "<?= $expression$newline ?>",
-            'raw' => "<?php echo $expression$newline ?>",
-            'comment' => '<?php /*' . str_replace('*/', '* /', substr($this->source, $found['start'] + 4, $found['end'] - $found['start'] - 8)) . '*/ ?>',
+            'comment' => '<?php /*' . str_replace('*/', '* /', $expression) . '*/ ?>',
             'at' => '@',
             'broken' => substr($this->source, $found['start'], $found['end'] - $found['start']),
             // From the name on as written, so a condition over several lines keeps them
@@ -85,39 +84,38 @@ final class Directives
                 return;
             }
             $i = match (true) {
-                substr_compare($this->source, '{{--', $next, 4) === 0 => $this->comment($next, $to),
-                substr_compare($this->source, '{!!', $next, 3) === 0 => $this->echo($next, $to, '{!!', '!!}', 'raw'),
-                substr_compare($this->source, '{{', $next, 2) === 0 => $this->echo($next, $to, '{{', '}}', 'echo'),
+                preg_match('#\G\{\{\s*/\*#', $this->source, $open, 0, $next) === 1 => $this->comment($next, $next + strlen($open[0]), $to),
+                substr_compare($this->source, '{{', $next, 2) === 0 => $this->echo($next, $to),
                 $this->source[$next] === '@' => $this->directive($next, $to),
                 default => $next + 1,
             };
         }
     }
 
-    private function comment(int $start, int $to): int
+    // {{ and a PHP block comment and }}, spaces allowed between them: $from is where the comment's text starts
+    private function comment(int $start, int $from, int $to): int
     {
-        $end = strpos($this->source, '--}}', $start + 4);
-        if ($end === false || $end + 4 > $to) {
-            $this->problem($start, '{{-- has no --}}');
+        if (preg_match('#\*/\s*\}\}#', $this->source, $close, PREG_OFFSET_CAPTURE, $from) !== 1 || $close[0][1] + strlen($close[0][0]) > $to) {
+            $this->problem($start, '{{/* has no */}}');
             return $to;
         }
-        $this->found[] = ['kind' => 'comment', 'start' => $start, 'end' => $end + 4];
-        return $end + 4;
+        $end = $close[0][1] + strlen($close[0][0]);
+        $this->found[] = ['kind' => 'comment', 'start' => $start, 'end' => $end, 'expression' => [$from, $close[0][1]]];
+        return $end;
     }
 
-    /** @param 'echo'|'raw' $kind */
-    private function echo(int $start, int $to, string $open, string $close, string $kind): int
+    private function echo(int $start, int $to): int
     {
-        $end = $this->skip($start + strlen($open), $to, $close);
+        $end = $this->skip($start + 2, $to, '}}');
         if ($end === null) {
-            $this->problem($start, "$open has no $close");
+            $this->problem($start, '{{ has no }}');
             return $to;
         }
-        if (trim(substr($this->source, $start + strlen($open), $end - $start - strlen($open))) === '') {
-            $this->problem($start, "$open $close is empty: put an expression between them");
+        if (trim(substr($this->source, $start + 2, $end - $start - 2)) === '') {
+            $this->problem($start, '{{ }} is empty: put an expression between them');
         }
-        $this->found[] = ['kind' => $kind, 'start' => $start, 'end' => $end + strlen($close), 'expression' => [$start + strlen($open), $end]];
-        return $end + strlen($close);
+        $this->found[] = ['kind' => 'echo', 'start' => $start, 'end' => $end + 2, 'expression' => [$start + 2, $end]];
+        return $end + 2;
     }
 
     private function directive(int $start, int $to): int

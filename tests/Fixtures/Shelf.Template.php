@@ -1,5 +1,5 @@
-{{-- A shelf:
-     every book, or a note --}}
+{{/* A shelf:
+     every book, or a note */}}
 @if ($this->open)
 <ul>
 @foreach ($this->books as $book)
@@ -12,5 +12,5 @@
     empty
 @endif
 <test-item key="{{ $this->books[0] }}" pick="{{ $this->pick(...) }}"></test-item>
-{!! '<hr>' !!}
+{{ new \Waypoint\Live\Html('<hr>') }}
 mail@example.com @@if

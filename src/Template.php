@@ -14,7 +14,7 @@ use TypeError;
  * `<app-row name="<?= $city ?>" key="<?= $city ?>"></app-row>` places a child component: a value that is a
  * single `<?= expr ?>` passes the value itself (an int, an object, a closure), anything else passes a string.
  * `data-on-click="remove($item)"` binds arguments on the server: the browser only gets an ID for the call.
- * Directives in the Blade style (`{{ }}`, `@foreach`, `@if`, see Directives) become such PHP first.
+ * Directives (`{{ }}`, `@foreach`, `@if`, see Directives) become such PHP first.
  * Compiled once when the plugin starts; the methods its `data-on-*` attributes name are the only ones the
  * browser can call.
  */

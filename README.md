@@ -76,10 +76,10 @@ plugin starts.
 
 ### Directives
 
-Templates also take directives in the style of Blade, mixed with plain PHP as you like:
+Templates also take directives, mixed with plain PHP as you like:
 
 ```
-{{-- every product, or a note --}}
+{{/* every product, or a note */}}
 @foreach ($this->products as $product)
     <li data-key="{{ $product->id }}">
         {{ $product->name }}
@@ -88,7 +88,7 @@ Templates also take directives in the style of Blade, mixed with plain PHP as yo
         @elseif ($product->stock < 5)
             <em>few left</em>
         @else
-            {!! $this->badge !!}
+            {{ $this->badge }}
         @endif
     </li>
 @endforeach
@@ -96,7 +96,8 @@ Templates also take directives in the style of Blade, mixed with plain PHP as yo
 ```
 
 - `{{ expr }}` prints escaped, as `<?= ?>`; a lone `{{ expr }}` in a child tag's attribute passes the value itself.
-  `{!! expr !!}` prints raw, `{{-- --}}` is a comment.
+  A value of type `Waypoint\Live\Html` prints as it is (`$this->badge` above is one): whether markup is raw
+  depends on the value, never on how the template prints it. `{{/* */}}` is a comment.
 - `@if (...)`, `@elseif (...)`, `@else`, `@endif`, `@foreach (...)`, `@endforeach`. `@@` prints an `@`.
 - A directive starts a line or follows whitespace or `>`, so `info@example.com`, `@media` in CSS and
   `@click` stay text. Inside `<?php ?>` nothing is a directive.

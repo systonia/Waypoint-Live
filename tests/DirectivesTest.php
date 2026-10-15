@@ -18,10 +18,10 @@ final class DirectivesTest extends TestCase
 
     public function testDirectivesBecomePhpOnTheSameLines(): void
     {
-        $source = "@foreach (\$this->items as \$item)\n  {{ \$item }}\n  @if (\$a === ')')\n  {!! \$html !!}\n  @elseif (\$b)\n  @else\n  @endif\n@endforeach\n{{-- one\ntwo --}}";
+        $source = "@foreach (\$this->items as \$item)\n  {{ \$item }}\n  @if (\$a === ')')\n  {{ \$html }}\n  @elseif (\$b)\n  @else\n  @endif\n@endforeach\n{{/* one\ntwo */}} {{ /* three */ }}";
         $php = (new Directives($source))->compile();
         $this->assertSame(
-            "<?php foreach (\$this->items as \$item): ?>\n  <?=  \$item , \"\\n\" ?>\n  <?php if (\$a === ')'): ?>\n  <?php echo  \$html , \"\\n\" ?>\n  <?php elseif (\$b): ?>\n  <?php else: ?>\n  <?php endif ?>\n<?php endforeach ?>\n<?php /* one\ntwo */ ?>",
+            "<?php foreach (\$this->items as \$item): ?>\n  <?=  \$item , \"\\n\" ?>\n  <?php if (\$a === ')'): ?>\n  <?=  \$html , \"\\n\" ?>\n  <?php elseif (\$b): ?>\n  <?php else: ?>\n  <?php endif ?>\n<?php endforeach ?>\n<?php /* one\ntwo */ ?> <?php /* three */ ?>",
             $php,
         );
         $this->assertSame(substr_count($source, "\n"), substr_count($php, "\n"));
@@ -77,6 +77,7 @@ final class DirectivesTest extends TestCase
         $this->assertSame(['1: @if needs a condition: @if ($ok)'], self::problems('@if open @endif'));
         $this->assertSame(['1: @if ( has no )'], self::problems('@if ($a === "(" '));
         $this->assertSame(['2: {{ has no }}'], self::problems("\n{{ \$a "));
+        $this->assertSame(['1: {{/* has no */}}'], self::problems('{{/* a */'));
         $this->assertSame(['1: {{ }} is empty: put an expression between them'], self::problems('{{ }}'));
         // A string may hold the closing braces
         $this->assertSame([], self::problems("{{ '}}' }}"));
