@@ -338,10 +338,20 @@ A changed component is seen once it is saved.
 With `APP_ENV=development` (Waypoint's `Environment::isDev()`) and `tenma --watch`:
 
 - A saved template renders at once in every open tab, and the components keep their state. A template that no
-  longer compiles keeps the last one that did; the error goes to the log.
+  longer compiles keeps the last one that did.
 - A saved PHP file restarts the workers (`--watch`), and the open pages load again by themselves.
+- An error shows in the page: what failed, in which component and after which event, the template's lines
+  around it and the stack, with links that open the file in the editor. The overlay closes when the component
+  renders again. A template that no longer compiles shows there too, until it is saved without the mistake.
+  The links open VS Code; for another editor:
 
-In production neither happens.
+  ```php
+  $app->configure(fn (LiveOptions $live) => $live->editor = 'vscodium://file/{file}:{line}');
+  ```
+- The same errors show in the editor at their line, under a Tenma with `Tenma::diagnostics()` and `tenma lsp`,
+  until the component renders again or the template compiles.
+
+In production none of this happens: the browser only learns that a component failed (`data-live-error`).
 
 ## Limits of the proof of concept
 
