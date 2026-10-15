@@ -26,7 +26,6 @@ final class Counter
 ```
 
 ```php
-<?php /** @var Counter $this */ ?>
 <!-- Counter.Template.php: $this is the component, <?= ?> escapes -->
 <button data-on-click="increment"><?= $this->count ?></button>
 ```
@@ -67,9 +66,8 @@ Waypoint view, `<?= $expr ?>` is HTML-escaped; `<?php echo $html ?>` stays raw f
 `<?php foreach (...): ?>` and `<?php if (...): ?>` work as in any view. Templates are compiled once when the
 plugin starts.
 
-`$this` is the component at runtime without any declaration. For the IDE (completion, F12 into the
-component) start the template with `<?php /** @var \App\Counter $this */ ?>`: no IDE can learn the type
-from the plugin.
+`$this` is the component at runtime without any declaration, and in the editor too through `tenma lsp`
+(see In the editor). Without it, a first line `<?php /** @var \App\Counter $this */ ?>` tells the IDE.
 
 `<?= $value ?>` escapes every value except a `Waypoint\Live\Html`, which carries markup that was built safely
 (another template's output, say) and is printed as it is.
@@ -280,6 +278,23 @@ components start over. It is never in a URL, a cookie or storage.
   error. Check the values in the method like any other request input.
 - Errors go to the log; the browser only gets `{"error": true}`, and the circuit keeps running. A component
   whose render fails gets `data-live-error` and holds back no other component of the tab.
+
+## In the editor
+
+The package brings a provider for `tenma lsp`, Tenma's language server that runs next to the editor's PHP
+extension (in VS Code and VSCodium through the Tenma extension, which starts it in trusted workspaces). It finds
+the components below the project's `autoload` and `autoload-dev` directories, without running the app, and
+gives a template:
+
+- `$this->` completed with the component's properties and methods, private ones included; hover and F12 into the class
+- `data-on-click="` completed with the methods the browser may call; F12 to the method
+- `<app-` completed with the selectors, the attributes of a child tag with its `#[Input]` properties; F12 from a
+  tag to its class
+- while typing: an action the component lacks or cannot be called (`Did you mean add()?`), an attribute that is
+  no input of the child, a child tag the compiler would leave as it is, a `//` comment inside `<?= ?>`, PHP that
+  does not parse, each at its line
+
+A changed component is seen once it is saved.
 
 ## Limits of the proof of concept
 

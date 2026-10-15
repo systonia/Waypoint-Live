@@ -22,6 +22,11 @@
             "Waypoint\\Live\\Tests\\": "tests/"
         }
     },
+    "extra": {
+        "tenma": {
+            "lsp": "Waypoint\\Live\\Editor"
+        }
+    },
     "scripts": {
         "test": "vendor/bin/phpunit --testdox",
         "stan": "phpstan analyse"

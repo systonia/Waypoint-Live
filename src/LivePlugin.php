@@ -100,8 +100,12 @@ final class LivePlugin extends PluginBase implements ViewHelper, ClientAsset, Re
         }
     }
 
-    /** @param class-string $class */
-    private function isInput(string $class, string $name): bool
+    /**
+     * @internal Whether $name is an #[Input] the page and parent templates may set.
+     *
+     * @param class-string $class
+     */
+    public static function isInput(string $class, string $name): bool
     {
         $property = property_exists($class, $name) ? new ReflectionProperty($class, $name) : null;
         return $property !== null && $property->isPublic() && !$property->isStatic() && $property->getAttributes(Input::class) !== [];

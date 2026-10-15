@@ -32,7 +32,17 @@ final class Template
         }
         preg_match_all('/\bdata-on-[a-z]+="([A-Za-z_]\w*)"/', $source, $named);
         $this->actions = array_values(array_unique($named[1]));
-        $this->code = '?>' . self::escapeEchoes(self::children($source, $selectors));
+        $this->code = self::compile($source, $selectors);
+    }
+
+    /**
+     * @internal The PHP code a template becomes; every line stays where it is in the template.
+     *
+     * @param list<string> $selectors
+     */
+    public static function compile(string $source, array $selectors): string
+    {
+        return '?>' . self::escapeEchoes(self::children($source, $selectors));
     }
 
     /** @param Closure(string, array<string, mixed>): string $child Renders a child component's tag. */

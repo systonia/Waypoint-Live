@@ -1,0 +1,119 @@
+<?php
+
+namespace Waypoint\Live\Tests;
+
+use PHPUnit\Framework\TestCase;
+use Waypoint\Live\Editor;
+use Waypoint\Live\Tests\Fixtures\{Counter, Item, ItemList};
+
+/** The repo is the project: its autoload-dev directory holds the fixture components. */
+final class EditorTest extends TestCase
+{
+    private const FIXTURES = __DIR__ . '/Fixtures';
+
+    private function editor(): Editor
+    {
+        return new Editor(dirname(__DIR__));
+    }
+
+    /** @return list<string> */
+    private function labels(string $file, string $text): array
+    {
+        return array_column($this->editor()->completions($file, $text, strlen($text)), 'label');
+    }
+
+    /** @return list<string> */
+    private function problems(string $file, string $text): array
+    {
+        return array_map(static fn (array $p) => "{$p['line']} {$p['severity']}: {$p['message']}", $this->editor()->diagnostics($file, $text));
+    }
+
+    public function testThisInATemplateIsItsComponent(): void
+    {
+        $this->assertSame(Counter::class, $this->editor()->thisClass(self::FIXTURES . '/Counter.Template.php'));
+        $this->assertSame(ItemList::class, $this->editor()->thisClass(self::FIXTURES . '/../Fixtures/ItemList.Template.php'));
+        $this->assertNull($this->editor()->thisClass(self::FIXTURES . '/Counter.php'));
+    }
+
+    public function testActionsCompleteThePublicMethods(): void
+    {
+        $this->assertSame(['add', 'reset'], $this->labels(self::FIXTURES . '/Counter.Template.php', '<button data-on-click="'));
+        $this->assertSame(['add', 'reset'], $this->labels(self::FIXTURES . '/Counter.Template.php', '<input data-on-input="ad'));
+        // Outside a template there is no component to call
+        $this->assertSame([], $this->labels(self::FIXTURES . '/view.php', '<button data-on-click="'));
+    }
+
+    public function testTagsCompleteTheSelectors(): void
+    {
+        $selectors = $this->labels(self::FIXTURES . '/view.php', '<p><test-');
+        $this->assertContains('test-counter', $selectors);
+        $this->assertContains('test-item', $selectors);
+        $this->assertNotContains('test-orphan', $selectors);
+    }
+
+    public function testAttributesCompleteTheInputsNotYetThere(): void
+    {
+        $template = self::FIXTURES . '/ItemList.Template.php';
+        $this->assertSame(['name', 'pick', 'key'], $this->labels($template, '<test-item '));
+        $this->assertSame(['pick', 'key'], $this->labels($template, '<test-item name="<?= $item ?>" '));
+        // A view has no keys
+        $this->assertSame(['count'], $this->labels(self::FIXTURES . '/view.php', "<test-counter\n    "));
+        // Inside a value, nothing
+        $this->assertSame([], $this->labels($template, '<test-item name="'));
+    }
+
+    public function testDefinitionLeadsFromTagsAndActionsToTheCode(): void
+    {
+        $text = '<test-item key="a"></test-item><button data-on-click="drop">';
+        $tag = $this->editor()->definition(self::FIXTURES . '/ItemList.Template.php', $text, 3);
+        $this->assertSame(['file' => (new \ReflectionClass(Item::class))->getFileName(), 'line' => 12], $tag);
+        $action = $this->editor()->definition(self::FIXTURES . '/ItemList.Template.php', $text, strpos($text, 'drop') + 1);
+        $this->assertSame(['file' => (new \ReflectionClass(ItemList::class))->getFileName(), 'line' => 24], $action);
+        $this->assertNull($this->editor()->definition(self::FIXTURES . '/ItemList.Template.php', $text, strpos($text, 'button')));
+    }
+
+    public function testTheFixtureTemplatesHaveNoProblems(): void
+    {
+        foreach (['Counter', 'ItemList', 'Item'] as $name) {
+            $file = self::FIXTURES . "/$name.Template.php";
+            $this->assertSame([], $this->problems($file, (string) file_get_contents($file)), $name);
+        }
+    }
+
+    public function testProblemsInActions(): void
+    {
+        $this->assertSame([
+            '2 error: data-on-click="ad": Counter has no method ad(). Did you mean add()?',
+            '3 error: data-on-click="tick": Counter::tick() is not public, the browser cannot call it',
+            '4 error: data-on-click="add(1)": name a method, without parentheses or arguments (an argument goes in data-arg)',
+        ], $this->problems(self::FIXTURES . '/Counter.Template.php', "<p>\n<b data-on-click=\"ad\">\n<b data-on-click=\"tick\">\n<b data-on-click=\"add(1)\">"));
+    }
+
+    public function testProblemsInChildTags(): void
+    {
+        $this->assertSame([
+            "1 error: <test-item nme>: 'nme' is not an #[Input] of Item. Did you mean name?",
+            "2 error: <test-item colour>: 'colour' is not an #[Input] of Item. Inputs: name, pick",
+            '3 error: <test-item> stays as it is: a component\'s tag needs attributes in double quotes and an empty body, <test-item ...></test-item>',
+            '4 warning: <test-iten> is no component. Did you mean <test-item>?',
+        ], $this->problems(self::FIXTURES . '/ItemList.Template.php', implode("\n", [
+            '<test-item nme="a"></test-item>',
+            '<test-item key="<?= $x ?>" colour="red" />',
+            "<test-item name='a'></test-item>",
+            '<test-iten></test-iten><my-widget></my-widget>',
+        ])));
+    }
+
+    public function testProblemsWithPhp(): void
+    {
+        $this->assertSame(
+            ['2 error: A line comment inside <?= ?> also comments out what the template adds before ?>: use /* */'],
+            $this->problems(self::FIXTURES . '/Item.Template.php', "<p>\n<?= \$this->name // the name ?>\n</p>"),
+        );
+        // The line in the template, though the compiled code runs through eval
+        $this->assertSame(
+            ["4 error: Unmatched ')'"],
+            $this->problems(self::FIXTURES . '/Item.Template.php', "<p>\n\n<?php if (\$this->name): ?>\n<?= \$this->name) ?>\n<?php endif ?>"),
+        );
+    }
+}

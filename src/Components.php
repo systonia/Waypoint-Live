@@ -49,6 +49,16 @@ final class Components
         return $this->compile()[$selector] ?? null;
     }
 
+    /**
+     * @internal For the editor: every component with its template file, not compiled.
+     *
+     * @return array<string, array{class-string, string}> selector => class, template file
+     */
+    public function sources(): array
+    {
+        return $this->found;
+    }
+
     /** @return list<string> */
     public function selectors(): array
     {

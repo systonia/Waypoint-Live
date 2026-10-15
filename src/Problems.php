@@ -1,0 +1,159 @@
+<?php
+
+namespace Waypoint\Live;
+
+use CompileError;
+use ReflectionClass;
+
+/**
+ * @internal Mistakes in a template that the compiler lets through and that would fail only later, at a
+ * click or a render, or not at all: an action the component lacks, an attribute that is no input of the
+ * child, a child tag the page would leave unexpanded, a `//` comment in `<?= ?>`, PHP that does not parse.
+ * The editor shows them while the template is typed.
+ */
+final class Problems
+{
+    /**
+     * @param class-string $class The component the template belongs to
+     * @param array<string, class-string> $components selector => class, every component of the app
+     * @return list<array{line: int, message: string, severity: 'error'|'warning'}>
+     */
+    public static function inTemplate(string $source, string $class, array $components): array
+    {
+        // A line comment in an echo tag also breaks the syntax: one message for it is enough
+        $comments = self::comments($source);
+        return [
+            ...($comments !== [] ? $comments : self::syntax($source, array_keys($components))),
+            ...self::actions($source, $class),
+            ...self::children($source, $components),
+        ];
+    }
+
+    /**
+     * @param list<string> $selectors
+     * @return list<array{line: int, message: string, severity: 'error'}>
+     */
+    private static function syntax(string $source, array $selectors): array
+    {
+        try {
+            // Compiled only: `return` comes first, so nothing of it runs. The compiler keeps the lines.
+            // ponytail: a function declared in a template would be declared here too
+            eval('return; ' . Template::compile($source, $selectors));
+            return [];
+        } catch (CompileError $e) {
+            return [['line' => $e->getLine(), 'message' => $e->getMessage(), 'severity' => 'error']];
+        }
+    }
+
+    /** @return list<array{line: int, message: string, severity: 'error'}> */
+    private static function comments(string $source): array
+    {
+        $problems = [];
+        $echo = false;
+        foreach (token_get_all($source) as $token) {
+            if (!is_array($token)) {
+                continue;
+            }
+            $echo = match ($token[0]) {
+                T_OPEN_TAG_WITH_ECHO => true,
+                T_CLOSE_TAG => false,
+                default => $echo,
+            };
+            if ($echo && $token[0] === T_COMMENT && !str_starts_with($token[1], '/*')) {
+                $problems[] = ['line' => $token[2], 'message' => 'A line comment inside <?= ?> also comments out what the template adds before ?>: use /* */', 'severity' => 'error'];
+            }
+        }
+        return $problems;
+    }
+
+    /**
+     * @param class-string $class
+     * @return list<array{line: int, message: string, severity: 'error'}>
+     */
+    private static function actions(string $source, string $class): array
+    {
+        $reflection = new ReflectionClass($class);
+        $short = $reflection->getShortName();
+        $callable = [];
+        foreach ($reflection->getMethods() as $method) {
+            if ($method->isPublic() && !$method->isStatic() && !str_starts_with($method->getName(), '__')) {
+                $callable[] = $method->getName();
+            }
+        }
+        $problems = [];
+        preg_match_all('/\bdata-on-([a-z]+)="([^"]*)"/', $source, $found, PREG_OFFSET_CAPTURE | PREG_SET_ORDER);
+        foreach ($found as [[$attribute, $offset], , [$name]]) {
+            $message = match (true) {
+                preg_match('/^[A-Za-z_]\w*$/', $name) !== 1 => "$attribute: name a method, without parentheses or arguments (an argument goes in data-arg)",
+                !$reflection->hasMethod($name) => "$attribute: $short has no method $name()" . self::didYouMean($name, $callable, '()'),
+                !$reflection->getMethod($name)->isPublic() => "$attribute: $short::$name() is not public, the browser cannot call it",
+                $reflection->getMethod($name)->isStatic() => "$attribute: $short::$name() is static, the browser calls methods of the component",
+                default => null,
+            };
+            if ($message !== null) {
+                $problems[] = ['line' => self::line($source, $offset), 'message' => $message, 'severity' => 'error'];
+            }
+        }
+        return $problems;
+    }
+
+    /**
+     * @param array<string, class-string> $components
+     * @return list<array{line: int, message: string, severity: 'error'|'warning'}>
+     */
+    private static function children(string $source, array $components): array
+    {
+        $problems = [];
+        $value = '"(?:<\?=.*?\?>|[^"])*"';
+        preg_match_all('/<([a-z][a-z0-9]*(?:-[a-z0-9]+)+)(?=[\s>\/])/', $source, $tags, PREG_OFFSET_CAPTURE | PREG_SET_ORDER);
+        foreach ($tags as [[$start, $offset], [$selector]]) {
+            $line = self::line($source, $offset);
+            $class = $components[$selector] ?? null;
+            if ($class === null) {
+                $close = self::didYouMean($selector, array_keys($components), '', '<', '>');
+                if ($close !== '') {
+                    $problems[] = ['line' => $line, 'message' => "<$selector> is no component$close", 'severity' => 'warning'];
+                }
+                continue;
+            }
+            // The form the compiler expands: attributes in double quotes, an empty body
+            $tag = '/\G<' . preg_quote($selector, '/') . '((?:\s+[A-Za-z_][\w.:-]*(?:=' . $value . ')?)*)\s*(?:\/>|>\s*<\/' . preg_quote($selector, '/') . '>)/s';
+            if (preg_match($tag, $source, $m, 0, $offset) !== 1) {
+                $problems[] = ['line' => $line, 'message' => "<$selector> stays as it is: a component's tag needs attributes in double quotes and an empty body, <$selector ...></$selector>", 'severity' => 'error'];
+                continue;
+            }
+            $inputs = array_values(array_filter(
+                array_map(static fn (\ReflectionProperty $p) => $p->getName(), (new ReflectionClass($class))->getProperties()),
+                static fn (string $name) => LivePlugin::isInput($class, $name),
+            ));
+            preg_match_all('/([A-Za-z_][\w.:-]*)(?:=' . $value . ')?/s', $m[1], $attributes);
+            foreach ($attributes[1] as $name) {
+                if ($name !== 'key' && !in_array($name, $inputs, true)) {
+                    $short = (new ReflectionClass($class))->getShortName();
+                    $hint = self::didYouMean($name, $inputs, '') ?: ($inputs === [] ? ". $short has no inputs" : '. Inputs: ' . implode(', ', $inputs));
+                    $problems[] = ['line' => $line, 'message' => "<$selector $name>: '$name' is not an #[Input] of $short$hint", 'severity' => 'error'];
+                }
+            }
+        }
+        return $problems;
+    }
+
+    /** @param list<string> $candidates */
+    private static function didYouMean(string $name, array $candidates, string $suffix, string $before = '', string $after = ''): string
+    {
+        $best = null;
+        $distance = 3;
+        foreach ($candidates as $candidate) {
+            $d = levenshtein(strtolower($name), strtolower($candidate));
+            if ($d < $distance) {
+                [$best, $distance] = [$candidate, $d];
+            }
+        }
+        return $best !== null ? ". Did you mean $before$best$suffix$after?" : '';
+    }
+
+    private static function line(string $source, int $offset): int
+    {
+        return substr_count($source, "\n", 0, $offset) + 1;
+    }
+}
