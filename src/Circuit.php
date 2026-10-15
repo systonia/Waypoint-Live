@@ -40,6 +40,9 @@ final class Circuit
 
     private Broadcast $broadcast;
 
+    /** What the circuit is doing, for the developer's details of an error: `mount`, `call "add"`, `#[Every] tick` */
+    private string $cause = '';
+
     /**
      * @param Closure(string): void $send Writes one message to the browser.
      * @param Closure(Throwable): void $report Logs a failure.
@@ -91,15 +94,19 @@ final class Circuit
         if (!is_array($msg) || !is_string($id)) {
             return;
         }
+        $method = $msg['m'] ?? null;
+        $this->cause = match ($msg['t'] ?? null) {
+            'call' => 'call "' . (is_string($method) ? strtok($method, '~') : '') . '"',
+            default => 'mount',
+        };
         try {
             match ($msg['t'] ?? null) {
                 'mount' => $this->mount($id, $msg['c'] ?? null, $msg['p'] ?? []),
-                'call' => $this->call($id, $msg['m'] ?? null, $msg['a'] ?? []),
+                'call' => $this->call($id, $method, $msg['a'] ?? []),
                 default => throw new InvalidArgumentException('Unknown message type'),
             };
         } catch (Throwable $e) {
-            ($this->report)($e);
-            ($this->send)(json_encode(['id' => $id, 'error' => true], JSON_THROW_ON_ERROR));
+            $this->failed($id, $e, $this->nodes[$id]->selector ?? (is_string($msg['c'] ?? null) ? $msg['c'] : null));
         }
         $this->navigate();
     }
@@ -168,7 +175,27 @@ final class Circuit
         foreach ($this->nodes as $node) {
             $this->startTimers($node);
         }
-        $this->changed(onlyIfChanged: false);
+        $this->changed(onlyIfChanged: false, cause: 'reconnect');
+    }
+
+    /** Logged; the browser learns that the component failed, and in dev what happened. */
+    private function failed(string $id, Throwable $e, ?string $selector): void
+    {
+        ($this->report)($e);
+        $error = $this->live->isDev() ? Failure::describe($e, $this->cause, $selector) : true;
+        ($this->send)(json_encode(['id' => $id, 'error' => $error], JSON_THROW_ON_ERROR | JSON_INVALID_UTF8_SUBSTITUTE));
+    }
+
+    /**
+     * @internal In dev: a saved template that does not compile ($e), or compiles again (null). The browser shows it
+     * until it compiles.
+     */
+    public function problem(string $file, ?Throwable $e): void
+    {
+        if ($this->live->isDev()) {
+            $error = $e === null ? null : Failure::describe($e, 'template saved');
+            ($this->send)(json_encode(['t' => 'problem', 'key' => $file, 'error' => $error], JSON_THROW_ON_ERROR | JSON_INVALID_UTF8_SUBSTITUTE));
+        }
     }
 
     private function mount(string $id, mixed $selector, mixed $inputs): void
@@ -280,6 +307,7 @@ final class Circuit
         foreach ((new ReflectionObject($node->component))->getMethods() as $method) {
             foreach ($method->getAttributes(Every::class) as $attribute) {
                 $node->timers[] = ($this->every)($attribute->newInstance()->seconds, function () use ($node, $method): void {
+                    $this->cause = '#[Every] ' . $method->getName();
                     try {
                         $method->invoke($node->component);
                         $this->changed();
@@ -303,8 +331,9 @@ final class Circuit
      *
      * @internal
      */
-    public function changed(bool $onlyIfChanged = true): void
+    public function changed(bool $onlyIfChanged = true, ?string $cause = null): void
     {
+        $this->cause = $cause ?? $this->cause;
         foreach ($this->nodes as $node) {
             if ($node->root !== null) {
                 continue;
@@ -313,8 +342,7 @@ final class Circuit
             try {
                 $this->render($node, $onlyIfChanged);
             } catch (Throwable $e) {
-                ($this->report)($e);
-                ($this->send)(json_encode(['id' => $node->id, 'error' => true], JSON_THROW_ON_ERROR));
+                $this->failed($node->id, $e, $node->selector);
             }
         }
     }

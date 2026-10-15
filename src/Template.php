@@ -6,7 +6,9 @@ use Closure;
 use InvalidArgumentException;
 use LogicException;
 use Stringable;
+use Throwable;
 use TypeError;
+use WeakMap;
 
 /**
  * A component's template: a PHP file rendered with `$this` as the component, private members included.
@@ -25,8 +27,11 @@ final class Template
     /** @var list<string> Methods named by `data-on-*="method"` in the template. */
     public readonly array $actions;
 
+    /** @var WeakMap<Throwable, array{string, int}>|null The template and line an error came from, for the developer */
+    private static ?WeakMap $origins = null;
+
     /** @param list<string> $selectors The app's components, expanded where their tag appears. */
-    public function __construct(string $path, array $selectors = [])
+    public function __construct(private readonly string $path, array $selectors = [])
     {
         $source = is_file($path) ? file_get_contents($path) : false;
         if ($source === false) {
@@ -37,7 +42,10 @@ final class Template
         try {
             $this->code = self::compile($source, $selectors);
         } catch (InvalidArgumentException $e) {
-            throw new InvalidArgumentException("Template '$path', " . $e->getMessage(), 0, $e);
+            $error = new InvalidArgumentException("Template '$path', " . $e->getMessage(), 0, $e);
+            self::$origins ??= new WeakMap();
+            self::$origins[$error] = [$path, preg_match('/^line (\d+):/', $e->getMessage(), $m) === 1 ? (int) $m[1] : 1];
+            throw $error;
         }
     }
 
@@ -71,9 +79,41 @@ final class Template
                 eval($__code);
             })->call($component, $this->code, $child, $action);
             return (string) ob_get_contents();
+        } catch (Throwable $e) {
+            // The innermost template keeps it: a child's template renders inside its parent's
+            self::$origins ??= new WeakMap();
+            $line = self::evalLine($e);
+            if (!isset(self::$origins[$e]) && $line !== null) {
+                self::$origins[$e] = [$this->path, $line];
+            }
+            throw $e;
         } finally {
             ob_end_clean();
         }
+    }
+
+    /**
+     * @internal The template file and line an error of a render came from: where it was thrown, or where the
+     * template called what threw it. The compiler keeps the lines, so they are the template's.
+     *
+     * @return array{string, int}|null
+     */
+    public static function origin(Throwable $e): ?array
+    {
+        return self::$origins[$e] ?? null;
+    }
+
+    private static function evalLine(Throwable $e): ?int
+    {
+        if (str_ends_with($e->getFile(), "eval()'d code")) {
+            return $e->getLine();
+        }
+        foreach ($e->getTrace() as $frame) {
+            if (str_ends_with($frame['file'] ?? '', "eval()'d code")) {
+                return $frame['line'] ?? null;
+            }
+        }
+        return null;
     }
 
     /** @internal What a compiled `<?= ?>` calls: everything escaped, except Html. */

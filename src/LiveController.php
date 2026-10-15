@@ -68,7 +68,7 @@ final class LiveController
                     $resumed = $circuit !== null;
                     $token = $resumed ? $asked : bin2hex(random_bytes(16));
                     $circuit ??= new Circuit($live, $send, static fn (Throwable $e) => $logger->error('live: ' . $e->getMessage(), ['exception' => $e]), null, $req);
-                    $send(json_encode(['t' => 'circuit', 'token' => $token, 'resumed' => $resumed] + ($live->isDev() ? ['boot' => self::$boot ??= bin2hex(random_bytes(8))] : []), JSON_THROW_ON_ERROR));
+                    $send(json_encode(['t' => 'circuit', 'token' => $token, 'resumed' => $resumed] + ($live->isDev() ? ['boot' => self::$boot ??= bin2hex(random_bytes(8)), 'editor' => $live->editor()] : []), JSON_THROW_ON_ERROR));
                     if ($resumed) {
                         $circuit->reattach($send, $req);
                     }

@@ -87,9 +87,10 @@ final class Components
 
     /**
      * @internal In dev: compiles the templates whose file changed since again. One that no longer compiles keeps
-     * its last version and goes to $report. Whether any template changed.
+     * its last version and goes to $report with its error, one that compiles goes there with null. Whether any
+     * template changed.
      *
-     * @param Closure(Throwable): void $report
+     * @param Closure(string, ?Throwable): void $report
      */
     public function reload(Closure $report): bool
     {
@@ -107,8 +108,9 @@ final class Components
             try {
                 $this->compiled[$selector] = [$class, new Template($path, $this->selectors())];
                 $changed = true;
+                $report($path, null);
             } catch (Throwable $e) {
-                $report($e);
+                $report($path, $e);
             }
         }
         return $changed;

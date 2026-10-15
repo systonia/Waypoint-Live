@@ -58,7 +58,15 @@ final class Broadcast
             $circuits[] = $circuit;
         }
         foreach ($circuits as $circuit) {
-            $circuit->changed();
+            $circuit->changed(cause: 'a broadcast');
+        }
+    }
+
+    /** @internal In dev: a saved template that does not compile, or null once it does again, to this worker's tabs. */
+    public function problem(string $file, ?\Throwable $e): void
+    {
+        foreach ($this->circuits as $circuit => $_) {
+            $circuit->problem($file, $e);
         }
     }
 

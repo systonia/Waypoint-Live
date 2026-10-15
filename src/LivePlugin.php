@@ -29,6 +29,8 @@ final class LivePlugin extends PluginBase implements ViewHelper, ClientAsset, Re
 
     private bool $dev = false;
 
+    private LiveOptions $options;
+
     /** @param list<class-string> $components Classes with a #[Component] attribute; other plugins add theirs to Components */
     public function __construct(array $components = [])
     {
@@ -46,10 +48,11 @@ final class LivePlugin extends PluginBase implements ViewHelper, ClientAsset, Re
         return 'live';
     }
 
-    public function boot(Container $container, Environment $environment, Logger $logger): void
+    public function boot(Container $container, Environment $environment, Logger $logger, LiveOptions $options): void
     {
         $this->container = $container;
         $this->dev = $environment->isDev();
+        $this->options = $options;
         $broadcast = new Broadcast();
         $container->set($this);
         $container->set($this->components);
@@ -59,7 +62,13 @@ final class LivePlugin extends PluginBase implements ViewHelper, ClientAsset, Re
         if ($this->dev && class_exists(\Tenma::class, false)) {
             // ponytail: polls 4 times a second; a watcher from Tenma once a second user needs one
             \Tenma::setInterval(function () use ($broadcast, $logger): void {
-                if ($this->components->reload(static fn (Throwable $e) => $logger->error('live: ' . $e->getMessage(), ['exception' => $e]))) {
+                $changed = $this->components->reload(static function (string $file, ?Throwable $e) use ($broadcast, $logger): void {
+                    if ($e !== null) {
+                        $logger->error('live: ' . $e->getMessage(), ['exception' => $e]);
+                    }
+                    $broadcast->problem($file, $e);
+                });
+                if ($changed) {
                     $broadcast->changedHere();
                 }
             }, 0.25);
@@ -70,6 +79,12 @@ final class LivePlugin extends PluginBase implements ViewHelper, ClientAsset, Re
     public function isDev(): bool
     {
         return $this->dev;
+    }
+
+    /** @internal In dev: how the browser links a file to the editor, `{file}` and `{line}` filled in. */
+    public function editor(): string
+    {
+        return $this->options->editor;
     }
 
     /** @internal The template a selector renders with now: in dev a saved one replaces the last. */

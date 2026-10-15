@@ -18,6 +18,8 @@
     let attempt = 0;
     // In dev, the server process the page came from: another one means PHP was reloaded, and the page with it
     let boot = null;
+    // In dev, how a file opens in the editor
+    let editor = null;
 
     const send = (message) => {
         if (ready) socket.send(JSON.stringify(message));
@@ -40,6 +42,7 @@
                     return;
                 }
                 boot = message.boot ?? null;
+                editor = message.editor ?? null;
                 token = message.token;
                 attempt = 0;
                 // A new circuit (first connection, or the old one expired): the components start from the page's
@@ -55,10 +58,20 @@
                 document.documentElement.removeAttribute('data-live-offline');
                 return;
             }
+            // In dev: a saved template that does not compile, until it does
+            if (message.t === 'problem') {
+                overlay.show(message.key, message.error);
+                return;
+            }
             const el = document.querySelector(`[data-live-id="${CSS.escape(message.id)}"]`);
             if (!el) return;
-            if (typeof message.html === 'string') patchChildren(el, message.html);
-            el.toggleAttribute('data-live-error', message.error === true);
+            if (typeof message.html === 'string') {
+                patchChildren(el, message.html);
+                overlay.show(message.id, null);
+            }
+            el.toggleAttribute('data-live-error', Boolean(message.error));
+            // In dev the error comes with what happened
+            if (typeof message.error === 'object' && message.error !== null) overlay.show(message.id, message.error);
         };
         socket.onclose = () => {
             ready = false;
@@ -228,6 +241,61 @@
         }
         if (after.checked !== before.checked) old.checked = after.checked;
     };
+
+    // In dev: what failed, with the template's lines and the stack, in a shadow root the page's CSS can't reach.
+    // An entry goes when its component renders again; the same error again counts up instead of stacking.
+    const overlay = (() => {
+        const entries = new Map();
+        let root = null;
+        const escape = (text) => String(text).replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
+        const link = (file, line) => {
+            const text = `${escape(file.split('/').slice(-2).join('/'))}:${line}`;
+            return editor ? `<a href="${escape(editor.replace('{file}', file).replace('{line}', line))}">${text}</a>` : text;
+        };
+        const render = (error, count) => {
+            const frames = (vendor) => error.trace.filter((f) => f.vendor === vendor).map((f) => `<li>${escape(f.call)} ${link(f.file, f.line)}</li>`).join('');
+            const vendor = error.trace.filter((f) => f.vendor).length;
+            return `<header>${link(error.file, error.line)}${count > 1 ? ` <b>×${count}</b>` : ''}<button title="Close">×</button></header>`
+                + `<p><strong>${escape(error.class)}</strong>: ${escape(error.message)}</p>`
+                + `<p class="where">${error.selector ? `&lt;${escape(error.selector)}&gt; · ` : ''}${escape(error.cause)}`
+                + `${error.template && error.template[0] !== error.file ? ` · template ${link(error.template[0], error.template[1])}` : ''}</p>`
+                + (error.snippet.length ? `<pre>${error.snippet.map(([n, text]) => `<span${n === error.line ? ' class="at"' : ''}>${String(n).padStart(4)} | ${escape(text)}</span>`).join('\n')}</pre>` : '')
+                + `<ul>${frames(false)}</ul>${vendor ? `<details><summary>${vendor} ${vendor === 1 ? 'frame' : 'frames'} of Live and vendor</summary><ul>${frames(true)}</ul></details>` : ''}`;
+        };
+        const mount = () => {
+            const host = document.createElement('live-errors');
+            document.body.append(host);
+            root = host.attachShadow({ mode: 'open' });
+            root.innerHTML = `<style>
+                :host { position: fixed; inset: auto 1rem 1rem 1rem; z-index: 2147483647; max-height: 70vh; overflow: auto; font: 13px/1.45 ui-monospace, monospace; }
+                section { background: #1e1e24; color: #eee; border-left: 4px solid #e5484d; border-radius: 6px; padding: .75rem 1rem; margin-top: .5rem; box-shadow: 0 4px 24px #0006; }
+                header { display: flex; gap: .5rem; align-items: center; color: #ffb4b4; }
+                button { margin-left: auto; background: none; border: 0; color: inherit; font-size: 18px; cursor: pointer; }
+                a { color: #8ab4ff; } p { margin: .35rem 0; } .where { color: #aaa; }
+                pre { background: #0003; padding: .5rem; overflow: auto; margin: .5rem 0; } .at { background: #e5484d44; display: inline-block; min-width: 100%; }
+                ul { margin: .25rem 0; padding-left: 1.25rem; } details { color: #aaa; }
+            </style>`;
+        };
+        return {
+            show(key, error) {
+                const entry = entries.get(key);
+                if (!error) {
+                    entry?.el.remove();
+                    entries.delete(key);
+                    return;
+                }
+                if (!root) mount();
+                const same = entry && entry.error.message === error.message && entry.error.file === error.file && entry.error.line === error.line;
+                const count = same ? entry.count + 1 : 1;
+                const el = entry?.el ?? document.createElement('section');
+                el.innerHTML = render(error, count);
+                el.querySelector('header button').onclick = () => { el.remove(); entries.delete(key); };
+                if (!entry) root.append(el);
+                entries.set(key, { el, error, count });
+                if (!same) console.error(`live: ${error.class}: ${error.message}\n    at ${error.file}:${error.line} (${error.cause})`, error);
+            },
+        };
+    })();
 
     connect();
 })();

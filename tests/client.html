@@ -91,6 +91,21 @@ const $ = (id) => document.getElementById(id);
   $('ignored').firstElementChild.textContent = 'typed in the browser';
   server({ id: 'c2', html: '<form id="up" data-on-submit="save"><input name="title" value="Trip"><input id="ph" type="file" name="photos[]" multiple><input type="file" name="empty"></form><input id="one" type="file" data-on-change="pick"><div id="ignored" data-live-ignore><span>server again</span></div><form id="mix" data-on-submit="mix"><input name="tags" value="a"><input name="tags[]" value="b"></form>' });
   check('data-live-ignore keeps the browser\'s content', $('ignored').textContent === 'typed in the browser');
+  // Errors: true only marks the component, details (dev) open the overlay, a repeat counts, a render closes it
+  const overlay = () => document.querySelector('live-errors')?.shadowRoot;
+  server({ id: 'c1', error: true });
+  check('error true opens no overlay', !overlay() && document.querySelector('[data-live-id="c1"]').hasAttribute('data-live-error'));
+  const error = { class: 'TypeError', message: 'not an array', file: '/app/src/A.Template.php', line: 2, selector: 'app-b', cause: 'call "go"', template: ['/app/src/A.Template.php', 2], snippet: [[1, '<p>'], [2, '{{ $x }}']], trace: [{ call: 'A->go()', file: '/app/src/A.php', line: 9, vendor: false }] };
+  server({ t: 'circuit', token: 't1', resumed: true, boot: 'b1', editor: 'vscodium://file/{file}:{line}' });
+  server({ id: 'c1', error });
+  server({ id: 'c1', error });
+  check('details open the overlay', overlay()?.querySelectorAll('section').length === 1 && overlay().querySelector('header').textContent.includes('×2'));
+  check('editor link', overlay().querySelector('a').getAttribute('href') === 'vscodium://file//app/src/A.Template.php:2');
+  server({ t: 'problem', key: '/app/src/B.Template.php', error: { ...error, message: '@if has no @endif' } });
+  check('a template problem stacks', overlay().querySelectorAll('section').length === 2);
+  server({ id: 'c1', html: $('fa').closest('[data-live]').innerHTML });
+  server({ t: 'problem', key: '/app/src/B.Template.php', error: null });
+  check('a render and a fixed template close them', overlay().querySelectorAll('section').length === 0);
   // The server sends the browser elsewhere
   server({ t: 'navigate', url: '#navigated' });
   check('navigate loads the url', location.hash === '#navigated');

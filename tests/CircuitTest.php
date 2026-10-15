@@ -9,7 +9,7 @@ use Waypoint\Container;
 use Waypoint\Environment;
 use Waypoint\Logger;
 use Waypoint\Http\{Request, Response};
-use Waypoint\Live\{Circuit, Components, LivePlugin};
+use Waypoint\Live\{Circuit, Components, LiveOptions, LivePlugin};
 use Waypoint\Live\Tests\Fixtures\{BasketBadge, BasketButton, Chat, Counter, Fragile, Item, ItemList, Label, Bouncer, Room, Shop, Uploader, Visitor};
 
 final class CircuitTest extends TestCase
@@ -44,13 +44,13 @@ final class CircuitTest extends TestCase
         );
     }
 
-    private function plugin(): LivePlugin
+    private function plugin(bool $dev = false): LivePlugin
     {
         $live = new LivePlugin([Counter::class, ItemList::class, Item::class, BasketButton::class, BasketBadge::class, Fragile::class, Uploader::class, Visitor::class, Bouncer::class, Chat::class, Shop::class]);
         $container = new Container();
         $container->set(new Label('fine'));
         $container->set(new Room());
-        $live->boot($container, self::environment(), new Logger());
+        $live->boot($container, self::environment($dev), new Logger(), new LiveOptions());
         return $live;
     }
 
@@ -221,7 +221,7 @@ final class CircuitTest extends TestCase
         try {
             require "$dir/$class.php";
             $live = new LivePlugin(["Waypoint\\Live\\Tests\\Fixtures\\$class"]);
-            $live->boot(new Container(), self::environment(), new Logger());
+            $live->boot(new Container(), self::environment(), new Logger(), new LiveOptions());
             $components = (new \ReflectionProperty($live, 'components'))->getValue($live);
             $circuit = $this->circuit(live: $live);
             $circuit->handle($this->message(['t' => 'mount', 'id' => 'c0', 'c' => 'test-hot', 'p' => []]));
@@ -236,8 +236,8 @@ final class CircuitTest extends TestCase
             // A template that no longer compiles keeps the last one, and is reported
             file_put_contents("$dir/Hot.Template.php", '@if ($this->count) <i>');
             $errors = [];
-            $this->assertFalse($components->reload(static function (Throwable $e) use (&$errors): void {
-                $errors[] = $e->getMessage();
+            $this->assertFalse($components->reload(static function (string $file, ?Throwable $e) use (&$errors): void {
+                $errors[] = $e?->getMessage();
             }));
             $this->assertStringContainsString('@if has no @endif', $errors[0]);
             $circuit->handle($this->message(['t' => 'call', 'id' => 'c0', 'm' => 'add', 'a' => []]));
@@ -245,6 +245,25 @@ final class CircuitTest extends TestCase
         } finally {
             array_map('unlink', glob("$dir/*") ?: []);
             rmdir($dir);
+        }
+    }
+
+    public function testInDevAnErrorTellsItsTemplateLineAndCauseInProductionNothing(): void
+    {
+        foreach ([false, true] as $dev) {
+            $this->sent = [];
+            $circuit = $this->circuit(live: $this->plugin($dev));
+            $circuit->handle($this->message(['t' => 'mount', 'id' => 'c0', 'c' => 'test-fragile', 'p' => []]));
+            $circuit->handle($this->message(['t' => 'call', 'id' => 'c0', 'm' => 'toggle', 'a' => []]));
+            $error = $this->sent[1]['error'];
+            if (!$dev) {
+                $this->assertTrue($error);
+                continue;
+            }
+            $this->assertSame(['RuntimeException', 'broken', 'test-fragile', 'call "toggle"', 2], [$error['class'], $error['message'], $error['selector'], $error['cause'], $error['line']]);
+            $this->assertStringEndsWith('/Fixtures/Fragile.Template.php', $error['file']);
+            $this->assertContains([2, '<button data-on-click="toggle"><?= $this->broken ? throw new \\RuntimeException(\'broken\') : $this->label->text ?></button>'], $error['snippet']);
+            $this->assertNotSame([], $error['trace']);
         }
     }
 
@@ -413,7 +432,7 @@ final class CircuitTest extends TestCase
         $live = new LivePlugin([Counter::class]);
         $container = new Container();
         $container->set(new Label('fine'));
-        $live->boot($container, self::environment(), new Logger());
+        $live->boot($container, self::environment(), new Logger(), new LiveOptions());
         // What a plugin that requires LivePlugin does in its own boot()
         $container->get(Components::class)->add(ItemList::class, Item::class);
 
