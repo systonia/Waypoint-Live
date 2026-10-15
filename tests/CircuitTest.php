@@ -204,6 +204,12 @@ final class CircuitTest extends TestCase
         $circuit->handle($this->message(['t' => 'call', 'id' => 'c0', 'm' => 'remove~0', 'a' => []]));
         $this->assertSame([], $this->sent);
 
+        // The browser brings one value at most: no further parameters of the method
+        $circuit->handle($this->message(['t' => 'call', 'id' => 'c0', 'm' => $renameTea, 'a' => ['x', 'y']]));
+        $this->assertSame([['id' => 'c0', 'error' => true]], $this->sent);
+        $this->sent = [];
+        $this->reported = [];
+
         // A method the template only calls with arguments is not reachable by its name
         $circuit->handle($this->message(['t' => 'call', 'id' => 'c0', 'm' => 'remove', 'a' => []]));
         $this->assertSame([['id' => 'c0', 'error' => true]], $this->sent);

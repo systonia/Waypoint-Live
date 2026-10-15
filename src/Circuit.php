@@ -372,7 +372,11 @@ final class Circuit
         }
         $bound = $node->calls[$method] ?? $node->lastCalls[$method] ?? null;
         if ($bound !== null) {
-            // A call a render bound: its arguments first, then what the event brings
+            // A call a render bound: its arguments first, then what the event brings, one value at most (the field's
+            // value, the form, data-arg). More would let the browser fill a method's further parameters
+            if (count($args) > 1) {
+                throw new InvalidArgumentException('A bound call takes at most one value from the browser');
+            }
             [$method, $before] = $bound;
             $args = [...$before, ...$args];
         } elseif (str_contains($method, '~')) {
