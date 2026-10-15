@@ -377,7 +377,11 @@ With `APP_ENV=development` (Waypoint's `Environment::isDev()`) and `tenma --watc
 
 - A saved template renders at once in every open tab, and the components keep their state. A template that no
   longer compiles keeps the last one that did.
-- A saved PHP file restarts the workers (`--watch`), and the open pages load again by themselves.
+- A saved PHP file restarts the workers (`--watch`). When it was a component's class, the open pages keep
+  their components and these get their state back: the properties with plain values (numbers, strings, arrays
+  of them), children by their selector and key. A property the new code no longer has, or whose type no longer
+  takes the value, starts over and is logged. Any other file loads the open pages again. Needs a Tenma with
+  `Tenma::reloadedBy()`; without it, the pages always load again.
 - Every component and its template are checked once the app has started and after every saved template:
   actions the component lacks, attributes that are no input of the child, tags that stay as they are, PHP that
   does not parse, directives that do not close, timers that cannot run, inputs the page cannot set. The

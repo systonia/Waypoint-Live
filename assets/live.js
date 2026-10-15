@@ -26,6 +26,8 @@
     // When the oldest unanswered call left, and how long each component's last patch took
     const calls = [];
     const patched = new Map();
+    // In dev: the state of every top-level component and its children, to give it back after PHP reloaded
+    const states = new Map();
 
     const send = (message) => {
         if (ready) socket.send(JSON.stringify(message));
@@ -43,7 +45,10 @@
                 return;
             }
             if (message.t === 'circuit') {
-                if (message.boot && boot !== null && message.boot !== boot && !message.resumed) {
+                // In dev, PHP ran again: only a component changed, so the components come back with their state;
+                // anything else, the page loads again
+                const restarted = message.boot && boot !== null && message.boot !== boot && !message.resumed;
+                if (restarted && message.reload !== 'state') {
                     location.reload();
                     return;
                 }
@@ -58,7 +63,9 @@
                 if (!message.resumed) {
                     queue.length = 0;
                     for (const root of roots) {
-                        socket.send(JSON.stringify({ t: 'mount', id: root.dataset.liveId, c: root.localName, p: JSON.parse(root.dataset.inputs || '{}') }));
+                        const id = root.dataset.liveId;
+                        const s = restarted ? states.get(id) : undefined;
+                        socket.send(JSON.stringify({ t: 'mount', id, c: root.localName, p: JSON.parse(root.dataset.inputs || '{}'), s }));
                     }
                 }
                 ready = true;
@@ -94,6 +101,8 @@
                 const before = performance.now();
                 patchChildren(el, message.html);
                 patched.set(message.id, performance.now() - before);
+                // The whole top-level component with its children, by their paths (c0/app-row=Berlin)
+                if (message.state) states.set(message.id, message.state);
                 overlay.show(message.id, null);
             }
             el.toggleAttribute('data-live-error', Boolean(message.error));

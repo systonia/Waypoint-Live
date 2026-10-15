@@ -8,6 +8,7 @@ use LogicException;
 use ReflectionMethod;
 use ReflectionObject;
 use Throwable;
+use Waypoint\Attributes\Inject;
 use Waypoint\Http\{Request, UploadedFile};
 
 /**
@@ -57,6 +58,9 @@ final class Circuit
 
     /** @var list<float> In dev: when timers sent something in the last second */
     private array $ticks = [];
+
+    /** @var array<string, array<array-key, mixed>> In dev: state to put back into the components with these IDs, after PHP reloaded */
+    private array $restore = [];
 
     /**
      * @param Closure(string): void $send Writes one message to the browser.
@@ -124,7 +128,7 @@ final class Circuit
         $this->started = hrtime(true);
         try {
             match ($msg['t'] ?? null) {
-                'mount' => $this->mount($id, $msg['c'] ?? null, $msg['p'] ?? []),
+                'mount' => $this->mount($id, $msg['c'] ?? null, $msg['p'] ?? [], $msg['s'] ?? null),
                 'call' => $this->call($id, $method, $msg['a'] ?? []),
                 default => throw new InvalidArgumentException('Unknown message type'),
             };
@@ -320,8 +324,17 @@ final class Circuit
         }
     }
 
-    private function mount(string $id, mixed $selector, mixed $inputs): void
+    /** @param mixed $state In dev, after PHP reloaded: what the browser kept of the component and its children, by ID */
+    private function mount(string $id, mixed $selector, mixed $inputs, mixed $state = null): void
     {
+        // Only in dev: the browser must never set what is not an input
+        if ($this->live->isDev() && is_array($state)) {
+            foreach ($state as $of => $properties) {
+                if (($of === $id || str_starts_with((string) $of, "$id/")) && is_array($properties)) {
+                    $this->restore[(string) $of] = $properties;
+                }
+            }
+        }
         // A dot belongs to the IDs of children, which the server numbers itself
         if ($id === '' || str_contains($id, '.') || isset($this->nodes[$id]) || $this->roots >= self::MAX_COMPONENTS) {
             throw new InvalidArgumentException("Cannot mount component '$id'");
@@ -417,11 +430,69 @@ final class Circuit
         );
     }
 
-    private function node(string $id, string $selector, object $component, Template $template, ?Node $root): Node
+    private function node(string $id, string $selector, object $component, Template $template, ?Node $root, ?string $path = null): Node
     {
         $node = $this->nodes[$id] = new Node($id, $selector, $component, $template, $root);
+        // By selector and key, not by ID: a child that moved or whose sibling went keeps its own state
+        $node->path = $path ?? $id;
+        if (isset($this->restore[$node->path])) {
+            $this->restoreState($component, $this->restore[$node->path]);
+            unset($this->restore[$node->path]);
+        }
         $this->startTimers($node);
         return $node;
+    }
+
+    /**
+     * In dev: what a component holds that the browser can keep across a reload of PHP: its own properties with
+     * plain values, by the component's path, children included. Services, objects and closures start over.
+     *
+     * @return array<string, array<string, mixed>>
+     */
+    private function states(Node $node): array
+    {
+        $state = [];
+        foreach ((new ReflectionObject($node->component))->getProperties() as $property) {
+            if ($property->isStatic() || !$property->isInitialized($node->component) || $property->getAttributes(Inject::class) !== []) {
+                continue;
+            }
+            $value = $property->getValue($node->component);
+            if (self::plain($value)) {
+                $state[$property->getName()] = $value;
+            }
+        }
+        $states = [$node->path => $state];
+        foreach ($node->children as $child) {
+            $states += $this->states($child);
+        }
+        return $states;
+    }
+
+    private static function plain(mixed $value): bool
+    {
+        return is_scalar($value) || $value === null || (is_array($value) && array_all($value, self::plain(...)));
+    }
+
+    /**
+     * Puts what the browser kept back, where the new code still has the property and its type takes the value.
+     *
+     * @param array<array-key, mixed> $state
+     */
+    private function restoreState(object $component, array $state): void
+    {
+        $reflection = new ReflectionObject($component);
+        foreach ($state as $name => $value) {
+            $name = (string) $name;
+            $property = $reflection->hasProperty($name) ? $reflection->getProperty($name) : null;
+            try {
+                if ($property === null || $property->isStatic() || $property->getAttributes(Inject::class) !== []) {
+                    throw new LogicException('gone');
+                }
+                $property->setValue($component, $value);
+            } catch (Throwable) {
+                $this->live->notice('a reload of PHP dropped ' . $component::class . "::\$$name: the new code has no such property, or its type takes the old value no longer");
+            }
+        }
     }
 
     private function startTimers(Node $node): void
@@ -489,7 +560,8 @@ final class Circuit
         $message = null;
         if (!$onlyIfChanged || $html !== $node->sent) {
             $node->sent = $html;
-            $message = json_encode(['id' => $node->id, 'html' => $html], JSON_THROW_ON_ERROR);
+            // In dev the browser keeps the state, for a reload of PHP
+            $message = json_encode(['id' => $node->id, 'html' => $html] + ($this->live->isDev() ? ['state' => $this->states($node)] : []), JSON_THROW_ON_ERROR | JSON_INVALID_UTF8_SUBSTITUTE);
             ($this->send)($message);
         }
         $this->renders[] = [$node->id, $node->selector, round((hrtime(true) - $started) / 1e6, 2), $message === null ? null : strlen($message)];
@@ -525,7 +597,7 @@ final class Circuit
             $child = $node->children[$key] ?? null;
             if ($child === null) {
                 [$component, $template] = $this->live->create($selector, $inputs, $this->services);
-                $child = $node->children[$key] = $this->node($node->id . '.' . $node->next++, $selector, $component, $template, $node->root ?? $node);
+                $child = $node->children[$key] = $this->node($node->id . '.' . $node->next++, $selector, $component, $template, $node->root ?? $node, "$node->path/$key");
             } else {
                 // As in Angular: only inputs whose value changed are set again, the child keeps what it changed itself
                 $this->live->setInputs($child->component, $selector, array_filter(

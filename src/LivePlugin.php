@@ -136,6 +136,22 @@ final class LivePlugin extends PluginBase implements ViewHelper, ClientAsset, Re
         }
     }
 
+    /**
+     * @internal In dev, after `tenma --watch` ran the app again: 'state' when what changed is a component or its
+     * template, so the open pages keep their components' state; 'page' when they load again.
+     */
+    public function reloaded(): string
+    {
+        $path = function_exists('tenma_reloaded_by') ? \Tenma::reloadedBy() : null;
+        $path = $path === null ? null : (realpath($path) ?: $path);
+        foreach ($this->components->sources() as [$class, $template]) {
+            if ($path !== null && in_array($path, [realpath($template), realpath((string) (new \ReflectionClass($class))->getFileName())], true)) {
+                return 'state';
+            }
+        }
+        return 'page';
+    }
+
     /** @internal In dev: how the browser links a file to the editor, `{file}` and `{line}` filled in. */
     public function editor(): string
     {

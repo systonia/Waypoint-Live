@@ -297,6 +297,29 @@ final class CircuitTest extends TestCase
         }
     }
 
+    public function testInDevAComponentAndItsChildrenGetTheirStateBackAfterPhpReloaded(): void
+    {
+        $circuit = $this->circuit(live: $this->plugin(true));
+        $circuit->handle($this->message(['t' => 'mount', 'id' => 'c0', 'c' => 'test-list', 'p' => []]));
+        $circuit->handle($this->message(['t' => 'call', 'id' => 'c0.1', 'm' => 'choose', 'a' => []]));
+        $circuit->handle($this->message(['t' => 'call', 'id' => 'c0', 'm' => 'drop', 'a' => []]));
+        $withState = array_values(array_filter($this->sent, static fn (array $m) => isset($m['state'])));
+        $state = $withState[count($withState) - 1]['state'];
+        // By path: "b" is the first child now, its state is still its own
+        $this->assertSame(['c0', 'c0/test-item=b'], array_keys($state));
+        $this->assertSame(['items' => ['b'], 'picked' => 'b'], $state['c0']);
+
+        foreach ([true, false] as $dev) {
+            $this->sent = [];
+            $again = $this->circuit(live: $this->plugin($dev));
+            $again->handle($this->message(['t' => 'mount', 'id' => 'c0', 'c' => 'test-list', 'p' => [], 's' => $state + ['c0/test-item=x' => ['clicks' => 9]]]));
+            $html = array_values(array_filter($this->sent, static fn (array $m) => isset($m['html'])))[0]['html'];
+            // In production the browser never sets state
+            $this->assertStringContainsString($dev ? '>b 1</button>' : '>a 0</button>', $html);
+            $this->assertStringContainsString($dev ? '<p>picked b</p>' : '<p>picked </p>', $html);
+        }
+    }
+
     public function testThePageRendersChildrenWithRelativeIds(): void
     {
         $html = Circuit::page($this->plugin(), 'test-list', []);
