@@ -448,8 +448,6 @@ In production none of this happens: the browser only learns that a component fai
   is refused, pass its ID and load it in the component. A child placed by a template gets any value, objects
   and closures included. A tag inside `<script>`, `<textarea>` or an HTML comment is expanded too.
 - At most 50 top-level components per tab.
-- The circuit's token isn't tied to the session or the user of the connection that created it: a tab left
-  open across a logout and a login of someone else reconnects to the old components.
 - The server keeps a circuit only once it notices that the old connection is dead. A browser that notices
   first (a network switch) may reconnect before that and start over.
 - A `//` comment inside `<?= ?>` breaks the template; use `/* */`.
