@@ -76,6 +76,18 @@ final class DirectivesTest extends TestCase
         $this->assertInstanceOf(Closure::class, $children[0]['pick']);
     }
 
+    public function testMarkupInACommentNamesNoActionAndBindsNoCall(): void
+    {
+        $source = "<button data-on-click=\"save\">\n{{/* <button data-on-click=\"wipe\"> */}}\n"
+            . "<!-- <button data-on-click=\"nuke\"> <?= 1 ?> <b data-on-click=\"remove(\$x)\"> -->\n"
+            . "<?php /* <button data-on-click=\"drop\"> */ ?>\n<b data-on-click=\"pick\"><i data-on-click=\"go(\$y)\">";
+        $actions = [];
+        $php = Template::compile($source, [], $actions);
+        $this->assertSame(['save', 'pick'], $actions);
+        $this->assertSame(1, substr_count($php, '$__action('));
+        $this->assertStringContainsString("\$__action('go', [\$y])", $php);
+    }
+
     public function testBlocksMustCloseInOrder(): void
     {
         $this->assertSame(['1: @foreach has no @endforeach'], self::problems("@foreach (\$a as \$b)\n"));

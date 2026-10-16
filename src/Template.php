@@ -37,24 +37,26 @@ final class Template
         if ($source === false) {
             throw new InvalidArgumentException("Template '$path' not found");
         }
-        preg_match_all('/\bdata-on-[a-z]+="([A-Za-z_]\w*)"/', $source, $named);
-        $this->actions = array_values(array_unique($named[1]));
+        $actions = [];
         try {
-            $this->code = self::compile($source, $selectors);
+            $this->code = self::compile($source, $selectors, $actions);
         } catch (InvalidArgumentException $e) {
             $error = new InvalidArgumentException("Template '$path', " . $e->getMessage(), 0, $e);
             self::$origins ??= new WeakMap();
             self::$origins[$error] = [$path, preg_match('/^line (\d+):/', $e->getMessage(), $m) === 1 ? (int) $m[1] : 1];
             throw $error;
         }
+        $this->actions = array_values(array_unique($actions));
     }
 
     /**
      * @internal The PHP code a template becomes; every line stays where it is in the template.
      *
      * @param list<string> $selectors
+     * @param list<string> $actions
+     * @param-out list<string> $actions The methods its `data-on-*="method"` attributes name
      */
-    public static function compile(string $source, array $selectors): string
+    public static function compile(string $source, array $selectors, array &$actions = []): string
     {
         $directives = new Directives($source);
         foreach ($directives->problems as $problem) {
@@ -62,7 +64,7 @@ final class Template
                 throw new InvalidArgumentException("line {$problem['line']}: {$problem['message']}");
             }
         }
-        return '?>' . self::escapeEchoes(self::children(self::calls($directives->compile()), $selectors));
+        return '?>' . self::escapeEchoes(self::children(self::calls($directives->compile(), $actions), $selectors));
     }
 
     /**
@@ -155,15 +157,36 @@ final class Template
         }, $source);
     }
 
-    /** `data-on-click="remove($item)"` becomes `data-on-click="<?= $__action('remove', [$item]) ?>"`, in the HTML only. */
-    private static function calls(string $source): string
+    /**
+     * `data-on-click="remove($item)"` becomes `data-on-click="<?= $__action('remove', [$item]) ?>"`, and
+     * `data-on-click="save"` names an action, in the HTML only. Markup in a comment does neither: a button that
+     * was commented out leaves its method out of reach and its arguments unevaluated.
+     *
+     * @param list<string> $actions
+     * @param-out list<string> $actions
+     */
+    private static function calls(string $source, array &$actions): string
     {
         $code = '';
+        $comment = false;
         foreach (token_get_all($source) as $token) {
             $text = is_array($token) ? $token[1] : $token;
-            $code .= is_array($token) && $token[0] === T_INLINE_HTML
-                ? preg_replace('/\bdata-on-([a-z]+)="([A-Za-z_]\w*)\(([^"]*)\)"/', 'data-on-$1="<?= $__action(\'$2\', [$3]) ?>"', $text)
-                : $text;
+            if (!is_array($token) || $token[0] !== T_INLINE_HTML) {
+                $code .= $text;
+                continue;
+            }
+            // An HTML comment may span PHP tags: whether one is open carries over to the next piece of HTML
+            foreach ((array) preg_split('/(<!--|-->)/', $text, -1, PREG_SPLIT_DELIM_CAPTURE) as $part) {
+                $part = (string) $part;
+                if ($comment || $part === '<!--') {
+                    $comment = $part !== '-->';
+                    $code .= $part;
+                    continue;
+                }
+                preg_match_all('/\bdata-on-[a-z]+="([A-Za-z_]\w*)"/', $part, $named);
+                $actions = [...$actions, ...$named[1]];
+                $code .= preg_replace('/\bdata-on-([a-z]+)="([A-Za-z_]\w*)\(([^"]*)\)"/', 'data-on-$1="<?= $__action(\'$2\', [$3]) ?>"', $part);
+            }
         }
         return $code;
     }
