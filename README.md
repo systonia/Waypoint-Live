@@ -317,6 +317,9 @@ components start over. It is never in a URL, a cookie or storage.
 - Only `#[Input]` properties can be set from outside, and their values come back from the browser when it
   connects: treat them like query parameters, never as proof of identity. The user comes from the upgrade
   request (JWT, session), which the route's guards check.
+- A call takes at most one value from the browser, the one its event brings (the field's value, the form,
+  `data-arg`). It fills the first parameter the template does not bind; any further one keeps its default. A
+  forged message can send it for a click without `data-arg` too, so that parameter is input like any other.
 - Arguments from the browser are converted to the method's parameter types as in a call without
   `strict_types`: `"7"` fills an `int`, `"false"` fills a `bool` as `true`. One that can't be converted is an
   error. Check the values in the method like any other request input.

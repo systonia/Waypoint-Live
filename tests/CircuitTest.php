@@ -102,6 +102,7 @@ final class CircuitTest extends TestCase
         $circuit->handle($this->message(['t' => 'call', 'id' => 'c0', 'm' => 'reset', 'a' => []]));
         $circuit->handle($this->message(['t' => 'call', 'id' => 'c0', 'm' => 'tick', 'a' => []]));
         $circuit->handle($this->message(['t' => 'call', 'id' => 'c0', 'm' => 'add', 'a' => ['not a number']]));
+        $circuit->handle($this->message(['t' => 'call', 'id' => 'c0', 'm' => 'add', 'a' => [1, 2]]));
         $circuit->handle($this->message(['t' => 'call', 'id' => 'c9', 'm' => 'add', 'a' => [1]]));
         $circuit->handle($this->message(['t' => 'mount', 'id' => 'c1', 'c' => Counter::class, 'p' => []]));
         $circuit->handle($this->message(['t' => 'mount', 'id' => 'c2', 'c' => 'test-counter', 'p' => ['admin' => true]]));
@@ -109,11 +110,11 @@ final class CircuitTest extends TestCase
         $circuit->handle($this->message(['t' => 'mount', 'id' => 'c0', 'c' => 'test-counter', 'p' => []]));
 
         // Errors only; after a failed call the unchanged component comes again, which clears the error in the browser
-        $this->assertCount(8, array_filter($this->sent, static fn (array $reply) => ($reply['error'] ?? false) === true));
+        $this->assertCount(9, array_filter($this->sent, static fn (array $reply) => ($reply['error'] ?? false) === true));
         foreach ($this->sent as $reply) {
             $this->assertTrue(($reply['error'] ?? false) || $reply['html'] === self::html(3));
         }
-        $this->assertCount(8, $this->reported);
+        $this->assertCount(9, $this->reported);
     }
 
     public function testGarbageIsIgnoredWithoutAReply(): void

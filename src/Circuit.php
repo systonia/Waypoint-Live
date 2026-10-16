@@ -379,17 +379,18 @@ final class Circuit
         if (!is_string($method) || !is_array($args) || !array_is_list($args)) {
             throw new InvalidArgumentException('call needs a method and a list of arguments');
         }
+        // An event brings one value at most (the field's value, the form, data-arg): more would let the browser fill
+        // parameters the template never gives it, such as save(bool $publish = false)
+        if (count($args) > 1) {
+            throw new InvalidArgumentException('A call takes at most one value from the browser');
+        }
         $files = 0;
         foreach ($args as $i => $arg) {
             $args[$i] = self::files($arg, $files);
         }
         $bound = $node->calls[$method] ?? $node->lastCalls[$method] ?? null;
         if ($bound !== null) {
-            // A call a render bound: its arguments first, then what the event brings, one value at most (the field's
-            // value, the form, data-arg). More would let the browser fill a method's further parameters
-            if (count($args) > 1) {
-                throw new InvalidArgumentException('A bound call takes at most one value from the browser');
-            }
+            // A call a render bound: its arguments first, then what the event brings
             [$method, $before] = $bound;
             $args = [...$before, ...$args];
         } elseif (str_contains($method, '~')) {
