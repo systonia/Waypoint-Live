@@ -5,7 +5,10 @@ components run on the server, in PHP. A component is a PHP class with state and 
 like any view, and after that its events and new renders travel over one WebSocket per browser tab. The
 component calls services directly; there is no API route and no `fetch()` in between.
 
-**Status: proof of concept.** Requires Waypoint with `Response::upgrade()` (not released yet) and Tenma.
+**Status: proof of concept.** Requires PHP 8.5, Waypoint 0.7 or later and Tenma.
+
+**Documentation:** [docs/](docs/index.md): a first component end to end, [guides](docs/guides/index.md) for every
+part of Live, and the [reference](docs/reference/index.md) of every public class.
 
 ```php
 // src/Counter.php
