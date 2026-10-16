@@ -15,7 +15,10 @@
     "autoload": {
         "psr-4": {
             "Waypoint\\Live\\": "src/"
-        }
+        },
+        "files": [
+            "src/classes.php"
+        ]
     },
     "bin": [
         "bin/live-check"

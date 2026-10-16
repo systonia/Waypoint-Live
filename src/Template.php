@@ -76,8 +76,9 @@ final class Template
 
     /**
      * @internal What a template of $class starts with, all on its first line: the namespace and the imports of the
-     * class's file, then the template's `@use`, which wins over an import of the same alias. A name written from the root without a leading backslash (`App\Status` in namespace `App\Shop`)
-     * still means the root's, as in a template without a namespace.
+     * class's file, then the template's `@use`, which wins over an import of the same alias, and `classes()`. A name
+     * written from the root without a leading backslash (`App\Status` in namespace `App\Shop`) still means the
+     * root's, as in a template without a namespace.
      *
      * @param class-string|null $class
      * @param array<string, string> $uses alias => class, from `@use`
@@ -88,11 +89,14 @@ final class Template
         foreach ($uses as $alias => $name) {
             $imports['class ' . strtolower($alias)] = "use $name as $alias;";
         }
+        if (!isset($imports['function classes'])) {
+            $imports[] = 'use function Waypoint\\Live\\classes;';
+        }
         $root = strstr($namespace, '\\', true) ?: $namespace;
         if ($root !== '' && !isset($imports['class ' . strtolower($root)])) {
             $imports[] = "use $root;";
         }
-        return ($namespace !== '' ? "namespace $namespace; " : '') . implode(' ', $imports) . ($imports !== [] ? ' ' : '');
+        return ($namespace !== '' ? "namespace $namespace; " : '') . implode(' ', $imports) . ' ';
     }
 
     /**

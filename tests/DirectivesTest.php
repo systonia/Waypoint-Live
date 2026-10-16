@@ -166,7 +166,7 @@ final class DirectivesTest extends TestCase
         // Group and function imports one by one, the trait in the class body is none
         $this->assertSame(
             'namespace Waypoint\Live\Tests\Fixtures; use Waypoint\Live\Component; use Waypoint\Live\Html as Markup; '
-                . 'use Waypoint\Live\Tests\Fixtures\Sub\Phase; use function strtoupper as shout; use Waypoint; ',
+                . 'use Waypoint\Live\Tests\Fixtures\Sub\Phase; use function strtoupper as shout; use function Waypoint\\Live\\classes; use Waypoint; ',
             Template::header(Board::class),
         );
         // The header shares the first line: errors keep theirs
