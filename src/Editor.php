@@ -112,7 +112,13 @@ final class Editor implements Provider, Tokens
         $directives = new Directives($text);
         $tokens = [];
         foreach ($directives->found as $found) {
-            if ($found['kind'] === 'at') {
+            if ($found['kind'] === 'at' || $found['kind'] === 'insert') {
+                continue;
+            }
+            if ($found['kind'] === 'class') {
+                self::token($tokens, $text, $found['start'], $found['start'] + 6, 'keyword');
+                self::token($tokens, $text, $found['start'] + 7, $found['start'] + 7 + strlen($found['class'] ?? ''), 'string');
+                self::php($tokens, $text, ...($found['expression'] ?? [0, 0]));
                 continue;
             }
             if ($found['kind'] === 'comment' || $found['kind'] === 'broken') {

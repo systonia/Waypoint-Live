@@ -76,7 +76,7 @@ final class EditorTest extends TestCase
 
     public function testTheFixtureTemplatesHaveNoProblems(): void
     {
-        foreach (['Counter', 'ItemList', 'Item', 'Shop'] as $name) {
+        foreach (['Counter', 'ItemList', 'Item', 'Shop', 'Board'] as $name) {
             $file = self::FIXTURES . "/$name.Template.php";
             $this->assertSame([], $this->problems($file, (string) file_get_contents($file)), $name);
         }
@@ -163,6 +163,7 @@ final class EditorTest extends TestCase
             ['1:0 @code keyword', '2:0 @endcode keyword', '1:6 $a variable', '1:11 count function', '1:17 $this variable', '1:24 books property'],
             $this->colours("@code \$a = count(\$this->books);\n@endcode"),
         );
+        $this->assertSame(['1:4 @class keyword', '1:11 md:w-1/2 string', '1:21 $a variable'], $this->colours('<li @class.md:w-1/2="$a">'));
         $this->assertSame(['1:0 @use keyword', '1:6 App\\Status class', '1:17 as keyword', '1:20 State class'], $this->colours('@use (App\\Status as State)'));
     }
 

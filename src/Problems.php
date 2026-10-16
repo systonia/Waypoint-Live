@@ -22,7 +22,7 @@ final class Problems
     public static function inTemplate(string $source, string $class, array $components): array
     {
         // Directives first: what they become is plain PHP on the same lines, for every other check
-        $directives = new Directives($source);
+        $directives = new Directives($source, array_keys($components));
         $php = $directives->compile();
         // A line comment in an echo tag also breaks the syntax: one message for it is enough
         $comments = self::comments($php);

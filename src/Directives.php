@@ -12,10 +12,14 @@ namespace Waypoint\Live;
  *     @foreach (expr) @endforeach
  *     @code … @endcode      PHP, as <?php … ?>; the body is PHP only, no directives in it
  *     `@use (A\B)`, `@use (A\B as C)`: a class for the whole template, after the component's class file's imports
+ *     @class.late="$cond"   in an HTML start tag: the class `late` when $cond is truthy, merged into the tag's class
+ *                           attribute through classes(); the name runs to the first = outside [ ]
  *     @@                    a literal @
  *
  * A directive starts a line or follows whitespace or `>`: `info@example.com` and `@media` stay text. Every
  * construct becomes PHP on the same lines, so errors, the editor and the problems keep the template's lines.
+ *
+ * @phpstan-type Found array{kind: 'echo'|'comment'|'directive'|'broken'|'at'|'code'|'use'|'class'|'insert', start: int, end: int, name?: string, expression?: array{int, int}, class?: string, code?: string, from?: int}
  */
 final class Directives
 {
@@ -25,9 +29,10 @@ final class Directives
     private const WITHOUT = ['else', 'endif', 'endforeach'];
 
     /**
-     * @var list<array{kind: 'echo'|'comment'|'directive'|'broken'|'at'|'code'|'use', start: int, end: int, name?: string, expression?: array{int, int}}>
-     *     What was found, by byte offsets: `expression` is the PHP inside, `name` the directive's; a broken
-     *     directive (no parentheses) stays as written
+     * @var list<Found>
+     *     What was found, by byte offsets: `expression` is the PHP inside, `name` the directive's, `class` the
+     *     name of a @class., `code` the PHP it becomes when that is set already, from `from` on if set; a
+     *     broken directive (no parentheses) stays as written
      */
     public array $found = [];
 
@@ -37,7 +42,8 @@ final class Directives
     /** @var list<array{line: int, message: string, severity: 'error'|'warning'}> Errors keep the template from compiling */
     public array $problems = [];
 
-    public function __construct(private readonly string $source)
+    /** @param list<string> $selectors The app's components: a @class. on their tags is an error */
+    public function __construct(private readonly string $source, private readonly array $selectors = [])
     {
         $offset = 0;
         foreach (token_get_all($source) as $token) {
@@ -47,6 +53,7 @@ final class Directives
             }
             $offset += strlen($text);
         }
+        $this->tags();
         $this->blocks();
     }
 
@@ -56,15 +63,19 @@ final class Directives
         $code = '';
         $at = 0;
         foreach ($this->found as $found) {
-            $code .= substr($this->source, $at, $found['start'] - $at) . $this->php($found);
+            $from = $found['from'] ?? $found['start'];
+            $code .= substr($this->source, $at, $from - $at) . $this->php($found);
             $at = $found['end'];
         }
         return $code . substr($this->source, $at);
     }
 
-    /** @param array{kind: string, start: int, end: int, name?: string, expression?: array{int, int}} $found */
+    /** @param Found $found */
     private function php(array $found): string
     {
+        if (isset($found['code'])) {
+            return $found['code'];
+        }
         [$from, $to] = $found['expression'] ?? [0, 0];
         $expression = substr($this->source, $from, $to - $from);
         // PHP swallows the newline after a closing tag: an echo at the end of a line prints it, as text would
@@ -143,6 +154,9 @@ final class Directives
         $end = $start + strlen($m[0]);
         if ($name === 'code') {
             return $this->code($start, $end, $to);
+        }
+        if ($name === 'class' && ($this->source[$end] ?? '') === '.') {
+            return $this->conditional($start, $end + 1, $to);
         }
         if ($name === 'endcode') {
             $this->problem($start, '@endcode without @code');
@@ -230,6 +244,125 @@ final class Directives
             ? '@code has a /* without */: it would comment out the template up to the next */'
             : '@code has no @endcode');
         return $to;
+    }
+
+    // @class.name="expr": the name runs to the first = outside square brackets, so md:w-1/2, data-[state=open]:block
+    // and [&>*]:p-4 are names; the value to the next "
+    private function conditional(int $start, int $from, int $to): int
+    {
+        $depth = 0;
+        for ($i = $from; $i < $to; $i++) {
+            $char = $this->source[$i];
+            if ($depth === 0 && ($char === '=' || $char === '>' || $char === '"' || $char === "'" || ctype_space($char))) {
+                break;
+            }
+            $depth = max(0, $depth + match ($char) {
+                '[' => 1,
+                ']' => -1,
+                default => 0,
+            });
+        }
+        $class = substr($this->source, $from, $i - $from);
+        if ($class === '') {
+            $this->problem($start, '@class. needs a class name and a condition: @class.late="$order->late"');
+            return $i;
+        }
+        $close = substr_compare($this->source, '="', $i, 2) === 0 ? strpos($this->source, '"', $i + 2) : false;
+        if ($close === false || $close >= $to) {
+            $this->problem($start, "@class.$class needs a condition: @class.$class=\"\$order->late\"");
+            return $i;
+        }
+        if (self::opensComment(substr($this->source, $i + 2, $close - $i - 2))) {
+            $this->problem($start, "@class.$class has a /* without */: it would comment out the template up to the next */");
+        }
+        $this->found[] = ['kind' => 'class', 'start' => $start, 'end' => $close + 1, 'name' => 'class', 'class' => $class, 'expression' => [$i + 2, $close]];
+        return $close + 1;
+    }
+
+    /** The @class. of each start tag become one classes() call in its class attribute. */
+    private function tags(): void
+    {
+        $items = array_filter($this->found, static fn (array $found) => $found['kind'] === 'class');
+        if ($items === []) {
+            return;
+        }
+        // The HTML alone: a > in PHP, in {{ }}, in a directive or in a class name ends no tag
+        $html = $this->source;
+        $offset = 0;
+        foreach (token_get_all($this->source) as $token) {
+            $length = strlen(is_array($token) ? $token[1] : $token);
+            if (!is_array($token) || $token[0] !== T_INLINE_HTML) {
+                $html = substr_replace($html, str_repeat(' ', $length), $offset, $length);
+            }
+            $offset += $length;
+        }
+        foreach ($this->found as $found) {
+            $html = substr_replace($html, str_repeat(' ', $found['end'] - $found['start']), $found['start'], $found['end'] - $found['start']);
+        }
+        preg_match_all('/<([A-Za-z][\w:-]*)(?:"[^"]*"|\'[^\']*\'|[^\'">])*>/', $html, $tags, PREG_OFFSET_CAPTURE | PREG_SET_ORDER);
+        $placed = [];
+        foreach ($tags as [[$tag, $at], [$name]]) {
+            $mine = array_filter($items, static fn (array $item) => $item['start'] > $at && $item['start'] < $at + strlen($tag));
+            if ($mine !== []) {
+                $placed += $mine;
+                $this->tag($tag, $at, $name, $mine);
+            }
+        }
+        // A stray one stays text
+        $stray = array_diff_key($items, $placed);
+        foreach ($stray as $item) {
+            $class = $item['class'] ?? '';
+            $this->problem($item['start'], "@class.$class belongs in an HTML start tag: <li @class.$class=\"\$order->late\">");
+        }
+        $found = array_diff_key($this->found, $stray);
+        usort($found, static fn (array $a, array $b) => $a['start'] <=> $b['start']);
+        $this->found = $found;
+    }
+
+    /**
+     * One tag's @class. as a classes() call: appended to its class attribute, or as one where the first was.
+     *
+     * @param array<int, Found> $items
+     */
+    private function tag(string $tag, int $at, string $name, array $items): void
+    {
+        $first = (int) array_key_first($items);
+        if (in_array($name, $this->selectors, true)) {
+            $this->problem($items[$first]['start'], "<$name @class." . ($items[$first]['class'] ?? '') . ">: a child component takes inputs, not classes. Put the class on an element inside its template, or pass an input");
+            foreach (array_keys($items) as $i) {
+                $this->found[$i]['code'] = '';
+            }
+            return;
+        }
+        preg_match_all('/\sclass\s*=\s*("[^"]*"|\'[^\']*\')/i', $tag, $attributes, PREG_OFFSET_CAPTURE);
+        if (count($attributes[0]) > 1) {
+            $this->problem($items[$first]['start'], "<$name> has two class attributes: the browser takes the first only");
+        }
+        $conditions = [];
+        $seen = [];
+        foreach ($items as $i => $item) {
+            $class = $item['class'] ?? '';
+            [$from, $to] = $item['expression'] ?? [0, 0];
+            if (isset($seen[$class])) {
+                $this->problem($item['start'], "@class.$class comes twice in <$name>", 'warning');
+            }
+            $seen[$class] = true;
+            // ponytail: the conditions move to one place, so in a tag over several lines an error in one is reported
+            // at the class attribute's line (or the first @class.); per-condition lines need them evaluated in place
+            $conditions[] = var_export($class, true) . ' => (' . substr($this->source, $from, $to - $from) . ')';
+            // With the spaces before it: no gaps left in the tag
+            $this->found[$i] = ['code' => '', 'from' => $item['start'] - strspn(strrev(substr($this->source, 0, $item['start'])), " \t")] + $item;
+        }
+        $call = '\\' . __NAMESPACE__ . '\\classes([' . implode(', ', $conditions) . '])';
+        if ($attributes[1] === []) {
+            $this->found[$first]['code'] = " class=\"<?= $call ?>\"";
+            return;
+        }
+        // Before the closing quote, with a space only when the value had one and the call adds something
+        [$value, $offset] = $attributes[1][0];
+        $quote = $at + $offset + strlen($value) - 1;
+        $empty = trim(substr($this->source, $at + $offset + 1, strlen($value) - 2)) === '';
+        $this->found[] = ['kind' => 'insert', 'start' => $quote, 'end' => $quote, 'code' => '<?= ' . ($empty ? $call : "rtrim(' ' . $call)") . ' ?>'];
     }
 
     /**

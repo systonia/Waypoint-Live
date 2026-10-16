@@ -65,7 +65,7 @@ final class Template
      */
     public static function compile(string $source, array $selectors, array &$actions = [], ?string $class = null, string $first = ''): string
     {
-        $directives = new Directives($source);
+        $directives = new Directives($source, $selectors);
         foreach ($directives->problems as $problem) {
             if ($problem['severity'] === 'error') {
                 throw new InvalidArgumentException("line {$problem['line']}: {$problem['message']}");

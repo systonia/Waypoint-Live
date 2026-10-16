@@ -6,7 +6,7 @@ use PHPUnit\Framework\TestCase;
 use Waypoint\App;
 use Waypoint\Live\LivePlugin;
 use Waypoint\Live\Testing\Tab;
-use Waypoint\Live\Tests\Fixtures\{Basket, BasketBadge, Counter, Item, ItemList, Door, Shop, Uploader};
+use Waypoint\Live\Tests\Fixtures\{Basket, BasketBadge, Board, Counter, Item, ItemList, Door, Shop, Uploader};
 use Waypoint\Waypoint;
 
 final class TabTest extends TestCase
@@ -17,7 +17,7 @@ final class TabTest extends TestCase
     {
         Waypoint::reset();
         $this->app = Waypoint::create();
-        $this->app->plugin(new LivePlugin([Counter::class, ItemList::class, Item::class, Shop::class, Uploader::class, Door::class, BasketBadge::class]));
+        $this->app->plugin(new LivePlugin([Counter::class, ItemList::class, Item::class, Shop::class, Uploader::class, Door::class, BasketBadge::class, Board::class]));
         $this->app->attach([]);
     }
 
@@ -37,6 +37,14 @@ final class TabTest extends TestCase
         $this->assertSame(5, $counter->component()->count);
         // The template escapes what it prints: assertSee looks for the escaped text
         $counter->assertSee('<b>');
+    }
+
+    public function testAClickTogglesAConditionalClass(): void
+    {
+        $board = Tab::for($this->app)->mount('test-board');
+        $this->assertStringContainsString('class="btn phase-[open]:ring">', $board->html());
+        $this->assertStringContainsString('class="btn done phase-[open]:ring">', $board->click('button')->html());
+        $this->assertStringContainsString('class="btn phase-[open]:ring">', $board->click('button')->html());
     }
 
     public function testAMethodTheTemplateDoesNotWireFails(): void
