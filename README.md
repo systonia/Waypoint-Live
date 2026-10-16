@@ -146,6 +146,9 @@ final class Cart
 Every component of the tab that injects `Cart` gets the same instance, children and other top-level components
 included; another tab gets its own. It lives as long as the circuit, reconnects included. A scoped service needs
 a constructor without required arguments; its own `#[Inject]` properties are set, scoped ones from the same tab.
+The other way round is refused: an app-wide service that injects a `#[Scoped]` one, directly or through another
+service, would share it between all tabs and users, so the component that injects it fails to be created, with
+the chain in the error. Make that service `#[Scoped]` too, or inject the scoped one into the component.
 When an action changes it, every component of the tab that shows it renders again: after a change all
 top-level components render, and those whose HTML changed are sent.
 

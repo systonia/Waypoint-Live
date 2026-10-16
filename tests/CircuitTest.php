@@ -10,7 +10,7 @@ use Waypoint\Environment;
 use Waypoint\Logger;
 use Waypoint\Http\{Request, Response};
 use Waypoint\Live\{Circuit, Components, LiveOptions, LivePlugin};
-use Waypoint\Live\Tests\Fixtures\{BasketBadge, BasketButton, Chat, Counter, Fragile, Item, ItemList, Label, Bouncer, Room, Shop, Ticker, Uploader, Visitor};
+use Waypoint\Live\Tests\Fixtures\{BasketBadge, BasketButton, Chat, Counter, Fragile, Item, ItemList, Label, Bouncer, Room, Shop, Tally, Ticker, Uploader, Visitor};
 
 final class CircuitTest extends TestCase
 {
@@ -480,6 +480,13 @@ final class CircuitTest extends TestCase
         $this->sent = [];
         $other->handle($this->message(['t' => 'call', 'id' => 'c0', 'm' => 'add', 'a' => []]));
         $this->assertSame([['id' => 'c1', 'html' => "<output>1</output>\n"]], $this->sent);
+    }
+
+    public function testAnAppWideServiceThatInjectsAScopedOneIsRefused(): void
+    {
+        $this->expectException(\LogicException::class);
+        $this->expectExceptionMessage(Tally::class . ' injects #[Scoped] ' . \Waypoint\Live\Tests\Fixtures\Basket::class);
+        $this->plugin()->scope()->get(Tally::class);
     }
 
     public function testABroadcastRendersEveryConnectedTab(): void
