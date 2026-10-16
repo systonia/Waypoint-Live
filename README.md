@@ -105,7 +105,8 @@ Templates also take directives, mixed with plain PHP as you like:
 - `@if (...)`, `@elseif (...)`, `@else`, `@endif`, `@foreach (...)`, `@endforeach`. `@@` prints an `@`.
 - A directive starts a line or follows whitespace or `>`, so `info@example.com`, `@media` in CSS and
   `@click` stay text. Inside `<?php ?>` nothing is a directive.
-- A block that does not close, or closes another one, keeps the template from compiling, with its line. In the
+- A block that does not close, or closes another one, keeps the template from compiling, with its line; so does
+  a `/*` without its `*/` inside `{{ }}`, which would comment out the template up to the next `*/`. In the
   editor these show while typing; `@forech` gets a hint and stays text.
 
 ## Nested components

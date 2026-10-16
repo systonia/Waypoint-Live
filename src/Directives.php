@@ -114,6 +114,9 @@ final class Directives
         if (trim(substr($this->source, $start + 2, $end - $start - 2)) === '') {
             $this->problem($start, '{{ }} is empty: put an expression between them');
         }
+        if (self::opensComment(substr($this->source, $start + 2, $end - $start - 2))) {
+            $this->problem($start, '{{ }} has a /* without */: it would comment out the template up to the next */');
+        }
         $this->found[] = ['kind' => 'echo', 'start' => $start, 'end' => $end + 2, 'expression' => [$start + 2, $end]];
         return $end + 2;
     }
@@ -154,6 +157,9 @@ final class Directives
             // The rest of the text is the expression now: no further problems from it
             $this->problem($start, "@$name ( has no )");
             return $to;
+        }
+        if (self::opensComment(substr($this->source, $open + 1, $close - $open - 1))) {
+            $this->problem($start, "@$name ( ) has a /* without */: it would comment out the template up to the next */");
         }
         $this->found[] = ['kind' => 'directive', 'start' => $start, 'end' => $close + 1, 'name' => $name, 'expression' => [$open + 1, $close]];
         return $close + 1;
@@ -221,6 +227,15 @@ final class Directives
             $this->problems[] = ['line' => $line, 'message' => "@$block has no @end$block", 'severity' => 'error'];
         }
         usort($this->problems, static fn (array $a, array $b) => $a['line'] <=> $b['line']);
+    }
+
+    /** Whether PHP code ends in a block comment it never closes; it would run on through what follows. */
+    private static function opensComment(string $code): bool
+    {
+        $tokens = token_get_all("<?php $code");
+        $last = end($tokens);
+        return is_array($last) && in_array($last[0], [T_COMMENT, T_DOC_COMMENT], true) && str_starts_with($last[1], '/*')
+            && (strlen($last[1]) < 4 || !str_ends_with($last[1], '*/'));
     }
 
     private static function closest(string $name): ?string

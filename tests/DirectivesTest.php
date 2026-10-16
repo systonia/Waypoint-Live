@@ -107,6 +107,9 @@ final class DirectivesTest extends TestCase
         $this->assertSame(['2: {{ has no }}'], self::problems("\n{{ \$a "));
         $this->assertSame(['1: {{/* has no */}}'], self::problems('{{/* a */'));
         $this->assertSame(['1: {{ }} is empty: put an expression between them'], self::problems('{{ }}'));
+        $this->assertSame(['1: {{ }} has a /* without */: it would comment out the template up to the next */'], self::problems('<p>{{ $a /* euros }}</p>{{/* b */}}'));
+        $this->assertSame(['1: @if ( ) has a /* without */: it would comment out the template up to the next */'], self::problems('@if ($a /* b) @endif'));
+        $this->assertSame([], self::problems('{{ $a /* euros */ }}'));
         // A string may hold the closing braces
         $this->assertSame([], self::problems("{{ '}}' }}"));
         $this->assertSame([], self::problems('<b @on="x">@id @lento</b>'));
