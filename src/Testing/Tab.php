@@ -78,7 +78,7 @@ final class Tab
         return Circuit::page($app->get(LivePlugin::class) ?? throw new LogicException('Tab::page() needs an app with LivePlugin, after attach()'), $selector, $inputs, '', $request);
     }
 
-    /** Puts a service, such as a fake, into this tab before its components are created. */
+    /** Puts a service, such as a fake, into this tab before its components are created, for the #[Scoped] class it is or extends. */
     public function with(object $service): self
     {
         $this->circuit->services()->put($service);

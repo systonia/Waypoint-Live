@@ -5,7 +5,7 @@ namespace Waypoint\Live\Tests\Fixtures;
 use Waypoint\Live\Scoped;
 
 #[Scoped]
-final class Basket
+class Basket
 {
     public int $items = 0;
 }

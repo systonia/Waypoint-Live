@@ -45,10 +45,17 @@ final class Scope extends Container
         return $service;
     }
 
-    /** @internal A scoped service the circuit creates itself, such as its Connection. */
+    /** @internal A scoped service the circuit creates itself, such as its Connection, or a test's fake. */
     public function put(object $service): void
     {
-        $this->scoped[$service::class] = $service;
+        // A fake, such as an anonymous subclass, stands in for the #[Scoped] classes it extends
+        $classes = array_filter([$service::class, ...class_parents($service)], self::isScoped(...));
+        if ($classes === []) {
+            throw new LogicException(get_debug_type($service) . ' is no #[Scoped] service and extends none: only those belong to a tab, the app\'s services come from its container');
+        }
+        foreach ($classes as $class) {
+            $this->scoped[$class] = $service;
+        }
     }
 
     /** @return list<class-string> The tab's own services so far, for live.inspect() */

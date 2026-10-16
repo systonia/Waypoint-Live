@@ -6,7 +6,7 @@ use PHPUnit\Framework\TestCase;
 use Waypoint\App;
 use Waypoint\Live\LivePlugin;
 use Waypoint\Live\Testing\Tab;
-use Waypoint\Live\Tests\Fixtures\{Counter, Item, ItemList, Door, Shop, Uploader};
+use Waypoint\Live\Tests\Fixtures\{Basket, BasketBadge, Counter, Item, ItemList, Door, Shop, Uploader};
 use Waypoint\Waypoint;
 
 final class TabTest extends TestCase
@@ -17,7 +17,7 @@ final class TabTest extends TestCase
     {
         Waypoint::reset();
         $this->app = Waypoint::create();
-        $this->app->plugin(new LivePlugin([Counter::class, ItemList::class, Item::class, Shop::class, Uploader::class, Door::class]));
+        $this->app->plugin(new LivePlugin([Counter::class, ItemList::class, Item::class, Shop::class, Uploader::class, Door::class, BasketBadge::class]));
         $this->app->attach([]);
     }
 
@@ -62,6 +62,17 @@ final class TabTest extends TestCase
 
         $tab->mount('app-door')->click('leave');
         $tab->assertNavigatedTo('/elsewhere');
+    }
+
+    public function testAFakeThatExtendsAScopedServiceTakesItsPlace(): void
+    {
+        $tab = Tab::for($this->app)->with(new class extends Basket {
+            public int $items = 7;
+        });
+        $tab->mount('test-basket-badge')->assertSee('7');
+
+        $this->expectExceptionMessage('is no #[Scoped] service');
+        $tab->with(new \stdClass());
     }
 
     public function testAnErrorFailsTheTestWithItsOwnStack(): void

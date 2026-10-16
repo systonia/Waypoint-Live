@@ -370,7 +370,8 @@ $tab->assertNavigatedTo('/login');
 Tab::page($app, 'app-counter', ['count' => 1]);    // the HTML before any connection
 ```
 
-`$tab->with($fake)` puts a service into the tab before the first `mount()`, in place of a `#[Scoped]` one. An
+`$tab->with($fake)` puts a service into the tab before the first `mount()`, in place of the `#[Scoped]` one it is
+or extends (`new class extends Mailer { ... }`); anything else is refused, the app's services come from the app. An
 error that the browser would only see as `data-live-error` fails the test with its own stack. Two tabs of one
 app share its services: a `Broadcast` in one renders the other.
 
