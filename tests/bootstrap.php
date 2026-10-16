@@ -22,5 +22,10 @@ if (!interface_exists(\Tenma\Lsp\Provider::class)) {
         {
             public function tokens(string $file, string $text): array;
         }
+
+        interface Imports
+        {
+            public function imports(string $file, string $text): array;
+        }
         PHP);
 }

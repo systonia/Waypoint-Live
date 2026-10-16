@@ -230,6 +230,7 @@ its template names the enum as the class does, and a class of `Bakery\Shop` with
 - A class of the global namespace needs a leading backslash or an import, as in the class file: `new \DateTimeImmutable()`.
 - In development a changed `use` in the class file compiles the template again, like a saved template.
 - An import that only the template uses looks unused in the class to PHPStan and the editor. `@use` puts it in the template instead.
+- The editor resolves these names too, through `tenma lsp`: `OrderStatus::` completes the enum's cases, and hover and F12 lead to the class, for the class file's imports and the template's `@use` alike.
 
 ### @use
 

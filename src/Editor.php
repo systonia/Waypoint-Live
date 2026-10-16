@@ -4,14 +4,15 @@ namespace Waypoint\Live;
 
 use ReflectionClass;
 use ReflectionMethod;
-use Tenma\Lsp\{Provider, Tokens};
+use Tenma\Lsp\{Imports, Provider, Tokens};
 
 /**
  * @internal Live in the editor, through `tenma lsp` (composer.json names it under extra.tenma.lsp): `$this` in a
  * template is its component, `data-on-click="` completes the component's public methods, `<app-` the
  * selectors, a child tag its #[Input] properties. F12 leads from a tag to its class and from an action
- * to its method. Problems shows what Problems finds while the template is typed, and directives get their
- * colours: the editor's PHP grammar sees them as text.
+ * to its method. Class names resolve as in the compiled template (Template::names()). Problems shows what
+ * Problems finds while the template is typed, and directives get their colours: the editor's PHP grammar sees
+ * them as text.
  *
  * The components are the classes with #[Component] below the project's autoload and autoload-dev
  * directories (PSR-4 and classmap), not only those listed in a LivePlugin: the editor runs no app.
@@ -19,7 +20,7 @@ use Tenma\Lsp\{Provider, Tokens};
  * @phpstan-type TokenType 'keyword'|'comment'|'variable'|'property'|'method'|'function'|'class'|'string'|'number'|'operator'
  * @phpstan-type Token array{line: int, column: int, length: int, type: TokenType}
  */
-final class Editor implements Provider, Tokens
+final class Editor implements Provider, Tokens, Imports
 {
     /** @var array<string, array{class-string, string}>|null selector => class, template file */
     private ?array $components = null;
@@ -101,6 +102,12 @@ final class Editor implements Provider, Tokens
             return [];
         }
         return Problems::inTemplate($text, $class, array_map(static fn (array $component) => $component[0], $this->components()));
+    }
+
+    public function imports(string $file, string $text): array
+    {
+        $class = $this->templateOf($file);
+        return $class === null ? [] : Template::names($class, (new Directives($text))->uses);
     }
 
     /** @return list<Token> */

@@ -75,35 +75,70 @@ final class Template
     }
 
     /**
-     * @internal What a template of $class starts with, all on its first line: the namespace and the imports of the
-     * class's file, then the template's `@use`, which wins over an import of the same alias, and `classes()`. A name
-     * written from the root without a leading backslash (`App\Status` in namespace `App\Shop`) still means the
-     * root's, as in a template without a namespace.
+     * @internal What a template of $class starts with, all on its first line: the namespace and the imports of
+     * scope().
      *
      * @param class-string|null $class
      * @param array<string, string> $uses alias => class, from `@use`
      */
     public static function header(?string $class, array $uses = []): string
     {
+        [$namespace, $imports] = self::scope($class, $uses);
+        $statements = array_map(
+            static fn (array $import) => 'use ' . ($import[0] !== 'class' ? "$import[0] " : '') . $import[1]
+                . ($import[2] !== substr((string) strrchr('\\' . $import[1], '\\'), 1) ? " as $import[2]" : '') . ';',
+            $imports,
+        );
+        return ($namespace !== '' ? "namespace $namespace; " : '') . implode(' ', $statements) . ' ';
+    }
+
+    /**
+     * @internal The class names a template of $class sees, for the editor: alias => class, the namespace under ''.
+     *
+     * @param class-string|null $class
+     * @param array<string, string> $uses alias => class, from `@use`
+     * @return array<string, string>
+     */
+    public static function names(?string $class, array $uses = []): array
+    {
+        [$namespace, $imports] = self::scope($class, $uses);
+        $names = ['' => $namespace];
+        foreach ($imports as [$kind, $name, $alias]) {
+            if ($kind === 'class') {
+                $names[$alias] = $name;
+            }
+        }
+        return $names;
+    }
+
+    /**
+     * The namespace and the imports of the class's file, then the template's `@use`, which wins over an import of
+     * the same alias, and `classes()`. A name written from the root without a leading backslash (`App\Status` in
+     * namespace `App\Shop`) still means the root's, as in a template without a namespace.
+     *
+     * @param class-string|null $class
+     * @param array<string, string> $uses
+     * @return array{string, array<string, array{string, string, string}>} The namespace, kind and alias => kind, name, alias
+     */
+    private static function scope(?string $class, array $uses): array
+    {
         [$namespace, $imports] = $class !== null ? self::imports((string) (new ReflectionClass($class))->getFileName()) : ['', []];
         foreach ($uses as $alias => $name) {
-            $imports['class ' . strtolower($alias)] = "use $name as $alias;";
+            $imports['class ' . strtolower($alias)] = ['class', $name, $alias];
         }
-        if (!isset($imports['function classes'])) {
-            $imports[] = 'use function Waypoint\\Live\\classes;';
-        }
+        $imports['function classes'] ??= ['function', 'Waypoint\\Live\\classes', 'classes'];
         $root = strstr($namespace, '\\', true) ?: $namespace;
-        if ($root !== '' && !isset($imports['class ' . strtolower($root)])) {
-            $imports[] = "use $root;";
+        if ($root !== '') {
+            $imports['class ' . strtolower($root)] ??= ['class', $root, $root];
         }
-        return ($namespace !== '' ? "namespace $namespace; " : '') . implode(' ', $imports) . ' ';
+        return [$namespace, $imports];
     }
 
     /**
      * The namespace of a PHP file and its imports up to its first class, enum, interface or trait (a trait's `use`
      * in a class body is none), one statement each, by kind and alias: PHP refuses a second import of an alias.
      *
-     * @return array{string, array<string, string>}
+     * @return array{string, array<string, array{string, string, string}>}
      */
     private static function imports(string $file): array
     {
@@ -146,7 +181,7 @@ final class Template
     /**
      * `use function A\{b, c as d}` as `use function A\b; use function A\c as d;`, by kind and alias.
      *
-     * @return array<string, string>
+     * @return array<string, array{string, string, string}> kind and alias => kind, name, alias
      */
     private static function statements(string $statement, string $namespace): array
     {
@@ -166,7 +201,7 @@ final class Template
                 continue;
             }
             $key = ($itemKind !== '' ? $itemKind : 'class') . ' ' . ($itemKind === 'const' ? $alias : strtolower($alias));
-            $imports[$key] = 'use ' . ($itemKind !== '' ? "$itemKind " : '') . $name . ($alias !== $last ? " as $alias" : '') . ';';
+            $imports[$key] = [$itemKind !== '' ? $itemKind : 'class', $name, $alias];
         }
         return $imports;
     }

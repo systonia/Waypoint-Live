@@ -4,7 +4,7 @@ namespace Waypoint\Live\Tests;
 
 use PHPUnit\Framework\TestCase;
 use Waypoint\Live\Editor;
-use Waypoint\Live\Tests\Fixtures\{Counter, Item, ItemList, Shop};
+use Waypoint\Live\Tests\Fixtures\{Board, Counter, Item, ItemList, Shop};
 
 /** The repo is the project: its autoload-dev directory holds the fixture components. */
 final class EditorTest extends TestCase
@@ -33,6 +33,23 @@ final class EditorTest extends TestCase
         $this->assertSame(Counter::class, $this->editor()->thisClass(self::FIXTURES . '/Counter.Template.php'));
         $this->assertSame(ItemList::class, $this->editor()->thisClass(self::FIXTURES . '/../Fixtures/ItemList.Template.php'));
         $this->assertNull($this->editor()->thisClass(self::FIXTURES . '/Counter.php'));
+    }
+
+    public function testATemplateImportsWhatTheCompilerDoes(): void
+    {
+        $template = self::FIXTURES . '/Board.Template.php';
+        $this->assertSame([
+            '' => 'Waypoint\\Live\\Tests\\Fixtures',
+            'Component' => 'Waypoint\\Live\\Component',
+            'Markup' => 'Waypoint\\Live\\Html',
+            'Phase' => 'Waypoint\\Live\\Tests\\Fixtures\\Sub\\Phase',
+            'Waypoint' => 'Waypoint',
+        ], $this->editor()->imports($template, ''));
+        // The template's @use adds a name and wins over the class file's alias
+        $imports = $this->editor()->imports($template, "@use (Waypoint\\Live\\Tests\\Fixtures\\Sub\\Phase as Stage)\n@use (\\Waypoint\\Live\\Tests\\Fixtures\\Mood as Markup)");
+        $this->assertSame('Waypoint\\Live\\Tests\\Fixtures\\Sub\\Phase', $imports['Stage']);
+        $this->assertSame('Waypoint\\Live\\Tests\\Fixtures\\Mood', $imports['Markup']);
+        $this->assertSame([], $this->editor()->imports(self::FIXTURES . '/Board.php', ''));
     }
 
     public function testActionsCompleteThePublicMethods(): void
