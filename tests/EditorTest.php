@@ -163,6 +163,7 @@ final class EditorTest extends TestCase
             ['1:0 @code keyword', '2:0 @endcode keyword', '1:6 $a variable', '1:11 count function', '1:17 $this variable', '1:24 books property'],
             $this->colours("@code \$a = count(\$this->books);\n@endcode"),
         );
+        $this->assertSame(['1:0 @use keyword', '1:6 App\\Status class', '1:17 as keyword', '1:20 State class'], $this->colours('@use (App\\Status as State)'));
     }
 
     public function testProblemsWithPhp(): void

@@ -162,7 +162,7 @@ final class DirectivesTest extends TestCase
     public function testATemplateResolvesNamesAsItsClassFileDoes(): void
     {
         $template = new Template(__DIR__ . '/Fixtures/Board.Template.php', [], Board::class);
-        $this->assertSame("<p>Calm OPEN open <b> Calm</p>\n", $template->render(new Board(), static fn () => ''));
+        $this->assertSame("<p>Calm OPEN open <b> Calm Closed</p>\n", $template->render(new Board(), static fn () => ''));
         // Group and function imports one by one, the trait in the class body is none
         $this->assertSame(
             'namespace Waypoint\Live\Tests\Fixtures; use Waypoint\Live\Component; use Waypoint\Live\Html as Markup; '
@@ -174,6 +174,38 @@ final class DirectivesTest extends TestCase
             static fn (array $p) => "{$p['line']} {$p['message']}",
             Problems::inTemplate("<p>\n{{ Phase::Open) }}", Board::class, []),
         ));
+    }
+
+    public function testUseImportsAClassForTheTemplate(): void
+    {
+        $source = "@use (Waypoint\\Live\\Tests\\Fixtures\\Sub\\Phase as Markup)\n@use (\\Waypoint\\Live\\Html)\n<p>{{ Markup::Closed->name }} {{ new Html('<b>') }}</p>";
+        $directives = new Directives($source);
+        $this->assertSame("<?php ?>\n<?php ?>\n<p><?=  Markup::Closed->name  ?> <?=  new Html('<b>')  ?></p>", $directives->compile());
+        $this->assertSame(['Markup' => 'Waypoint\\Live\\Tests\\Fixtures\\Sub\\Phase', 'Html' => 'Waypoint\\Live\\Html'], $directives->uses);
+        // The template's alias wins over the class file's Html as Markup
+        $header = Template::header(Board::class, $directives->uses);
+        $this->assertStringContainsString('use Waypoint\\Live\\Tests\\Fixtures\\Sub\\Phase as Markup; ', $header);
+        $this->assertStringNotContainsString('Html as Markup', $header);
+        eval(Template::compile($source, [], class: Board::class, first: 'return; '));
+        $file = (string) tempnam(sys_get_temp_dir(), 'live');
+        file_put_contents($file, $source);
+        try {
+            $this->assertSame('<p>Closed <b></p>', (new Template($file, [], Board::class))->render(new Board(), static fn () => ''));
+        } finally {
+            unlink($file);
+        }
+    }
+
+    public function testMistakesInUse(): void
+    {
+        $this->assertSame(['2: @use needs a class: @use (App\\Status)'], self::problems("\n@use App\\Status"));
+        $this->assertSame(['1: @use (App\\Status as): name a class, as in @use (App\\Status) or @use (App\\Status as State)'], self::problems('@use (App\\Status as)'));
+        $this->assertSame(['2: @use (Waypoint\\Live\\Template as html): html is imported above already'], self::problems("@use (Waypoint\\Live\\Html)\n@use (Waypoint\\Live\\Template as html)"));
+        $missing = (new Directives('@use (App\\Missing)'))->problems;
+        $this->assertSame(['1: @use (App\\Missing): there is no class, enum, interface or trait App\\Missing'], self::problems('@use (App\\Missing)'));
+        $this->assertSame('warning', $missing[0]['severity']);
+        // Inside @code it is PHP; @user in a text is no typo
+        $this->assertSame([], (new Directives('@code use ($a) @endcode Hi @user'))->problems);
     }
 
     public function testATemplateWithProblemsDoesNotCompile(): void

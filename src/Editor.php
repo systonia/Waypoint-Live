@@ -120,7 +120,7 @@ final class Editor implements Provider, Tokens
                 continue;
             }
             [$from, $to] = $found['expression'] ?? [$found['end'], $found['end']];
-            if ($found['kind'] === 'directive') {
+            if ($found['kind'] === 'directive' || $found['kind'] === 'use') {
                 self::token($tokens, $text, $found['start'], $found['start'] + 1 + strlen($found['name'] ?? ''), 'keyword');
             } else {
                 // {{ and }}, @code and @endcode

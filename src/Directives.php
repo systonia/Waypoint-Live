@@ -11,6 +11,7 @@ namespace Waypoint\Live;
  *     @if (cond) @elseif (cond) @else @endif
  *     @foreach (expr) @endforeach
  *     @code … @endcode      PHP, as <?php … ?>; the body is PHP only, no directives in it
+ *     `@use (A\B)`, `@use (A\B as C)`: a class for the whole template, after the component's class file's imports
  *     @@                    a literal @
  *
  * A directive starts a line or follows whitespace or `>`: `info@example.com` and `@media` stay text. Every
@@ -19,16 +20,19 @@ namespace Waypoint\Live;
 final class Directives
 {
     /** Directives that take an expression in parentheses, and those that take none. */
-    private const WITH_EXPRESSION = ['if', 'elseif', 'foreach'];
+    private const WITH_EXPRESSION = ['if', 'elseif', 'foreach', 'use'];
 
     private const WITHOUT = ['else', 'endif', 'endforeach'];
 
     /**
-     * @var list<array{kind: 'echo'|'comment'|'directive'|'broken'|'at'|'code', start: int, end: int, name?: string, expression?: array{int, int}}>
+     * @var list<array{kind: 'echo'|'comment'|'directive'|'broken'|'at'|'code'|'use', start: int, end: int, name?: string, expression?: array{int, int}}>
      *     What was found, by byte offsets: `expression` is the PHP inside, `name` the directive's; a broken
      *     directive (no parentheses) stays as written
      */
     public array $found = [];
+
+    /** @var array<string, string> alias => class, from `@use` */
+    public array $uses = [];
 
     /** @var list<array{line: int, message: string, severity: 'error'|'warning'}> Errors keep the template from compiling */
     public array $problems = [];
@@ -68,6 +72,8 @@ final class Directives
         return match ($found['kind']) {
             'echo' => "<?= $expression$newline ?>",
             'code' => "<?php $expression ?>",
+            // Goes in the header on line 1 (Template::header); the tag swallows the newline, as a directive's does
+            'use' => '<?php ?>',
             'comment' => '<?php /*' . str_replace('*/', '* /', $expression) . '*/ ?>',
             'at' => '@',
             'broken' => substr($this->source, $found['start'], $found['end'] - $found['start']),
@@ -156,7 +162,11 @@ final class Directives
         }
         $open = $end + strspn($this->source, " \t\r\n", $end, $to - $end);
         if (($this->source[$open] ?? '') !== '(') {
-            $this->problem($start, "@$name needs " . ($name === 'foreach' ? 'what to loop over: @foreach ($items as $item)' : 'a condition: @' . $name . ' ($ok)'));
+            $this->problem($start, "@$name needs " . match ($name) {
+                'foreach' => 'what to loop over: @foreach ($items as $item)',
+                'use' => 'a class: @use (App\\Status)',
+                default => "a condition: @$name (\$ok)",
+            });
             // Still a block, so its end is no second problem
             $this->found[] = ['kind' => 'broken', 'start' => $start, 'end' => $end, 'name' => $name];
             return $end;
@@ -170,8 +180,30 @@ final class Directives
         if (self::opensComment(substr($this->source, $open + 1, $close - $open - 1))) {
             $this->problem($start, "@$name ( ) has a /* without */: it would comment out the template up to the next */");
         }
-        $this->found[] = ['kind' => 'directive', 'start' => $start, 'end' => $close + 1, 'name' => $name, 'expression' => [$open + 1, $close]];
+        if ($name === 'use') {
+            $this->import($start, trim(substr($this->source, $open + 1, $close - $open - 1)));
+        }
+        $this->found[] = ['kind' => $name === 'use' ? 'use' : 'directive', 'start' => $start, 'end' => $close + 1, 'name' => $name, 'expression' => [$open + 1, $close]];
         return $close + 1;
+    }
+
+    private function import(int $start, string $use): void
+    {
+        if (preg_match('/^\\\\?([A-Za-z_]\w*(?:\\\\[A-Za-z_]\w*)*)(?:\s+as\s+([A-Za-z_]\w*))?$/i', $use, $m) !== 1) {
+            $this->problem($start, "@use ($use): name a class, as in @use (App\\Status) or @use (App\\Status as State)");
+            return;
+        }
+        $name = $m[1];
+        $alias = ($m[2] ?? '') !== '' ? $m[2] : substr((string) strrchr("\\$name", '\\'), 1);
+        if (array_key_exists(strtolower($alias), array_change_key_case($this->uses))) {
+            $this->problem($start, "@use ($use): $alias is imported above already");
+            return;
+        }
+        $this->uses[$alias] = $name;
+        // Only a warning: the name may be used in a branch that never runs
+        if (!class_exists($name) && !interface_exists($name) && !trait_exists($name)) {
+            $this->problem($start, "@use ($use): there is no class, enum, interface or trait $name", 'warning');
+        }
     }
 
     // The body is PHP: it ends at the first @endcode outside its strings and comments
@@ -275,7 +307,8 @@ final class Directives
 
     private static function closest(string $name): ?string
     {
-        foreach ([...self::WITH_EXPRESSION, ...self::WITHOUT] as $directive) {
+        // Not @use: @user in a text is no typo
+        foreach ([...array_diff(self::WITH_EXPRESSION, ['use']), ...self::WITHOUT] as $directive) {
             // Not for short names: @on or @id in plain text are no typo of @if
             if (strlen($name) >= 4 && levenshtein($name, $directive) <= 2) {
                 return $directive;

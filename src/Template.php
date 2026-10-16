@@ -71,19 +71,23 @@ final class Template
                 throw new InvalidArgumentException("line {$problem['line']}: {$problem['message']}");
             }
         }
-        return self::header($class) . $first . '?>' . self::escapeEchoes(self::children(self::calls($directives->compile(), $actions), $selectors));
+        return self::header($class, $directives->uses) . $first . '?>' . self::escapeEchoes(self::children(self::calls($directives->compile(), $actions), $selectors));
     }
 
     /**
      * @internal What a template of $class starts with, all on its first line: the namespace and the imports of the
-     * class's file. A name written from the root without a leading backslash (`App\Status` in namespace `App\Shop`)
+     * class's file, then the template's `@use`, which wins over an import of the same alias. A name written from the root without a leading backslash (`App\Status` in namespace `App\Shop`)
      * still means the root's, as in a template without a namespace.
      *
      * @param class-string|null $class
+     * @param array<string, string> $uses alias => class, from `@use`
      */
-    public static function header(?string $class): string
+    public static function header(?string $class, array $uses = []): string
     {
         [$namespace, $imports] = $class !== null ? self::imports((string) (new ReflectionClass($class))->getFileName()) : ['', []];
+        foreach ($uses as $alias => $name) {
+            $imports['class ' . strtolower($alias)] = "use $name as $alias;";
+        }
         $root = strstr($namespace, '\\', true) ?: $namespace;
         if ($root !== '' && !isset($imports['class ' . strtolower($root)])) {
             $imports[] = "use $root;";
