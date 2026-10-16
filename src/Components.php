@@ -25,7 +25,7 @@ final class Components
     /** @var array<string, array{class-string, Template}>|null */
     private ?array $compiled = null;
 
-    /** @var array<string, string> selector => hash of the template file it was compiled from */
+    /** @var array<string, string> selector => hash of the template file and its class's imports it was compiled from */
     private array $hashes = [];
 
     /**
@@ -93,8 +93,8 @@ final class Components
             // Each template expands the others' tags: compiled once all of them are known, kept only if all compile
             $compiled = [];
             foreach ($this->found as $selector => [$class, $path]) {
-                $this->hashes[$selector] = (string) md5_file($path);
-                $compiled[$selector] = [$class, new Template($path, $this->selectors())];
+                $this->hashes[$selector] = self::hash($class, $path);
+                $compiled[$selector] = [$class, new Template($path, $this->selectors(), $class)];
             }
             $this->compiled = $compiled;
         }
@@ -123,7 +123,7 @@ final class Components
     }
 
     /**
-     * @internal In dev: compiles the templates whose file changed since again. One that no longer compiles keeps
+     * @internal In dev: compiles the templates whose file or class imports changed since again. One that no longer compiles keeps
      * its last version and goes to $report with its error, one that compiles goes there with null. Whether any
      * template changed.
      *
@@ -134,7 +134,7 @@ final class Components
         $changed = false;
         foreach ($this->found as $selector => [$class, $path]) {
             // Content, not the time: an editor that saves without a change changes nothing
-            $hash = is_file($path) ? (string) md5_file($path) : '';
+            $hash = is_file($path) ? self::hash($class, $path) : '';
             if ($hash === ($this->hashes[$selector] ??= $hash)) {
                 continue;
             }
@@ -145,7 +145,7 @@ final class Components
                 continue;
             }
             try {
-                $this->compiled[$selector] = [$class, new Template($path, $this->selectors())];
+                $this->compiled[$selector] = [$class, new Template($path, $this->selectors(), $class)];
                 $changed = true;
                 $report($path, null);
             } catch (Throwable $e) {
@@ -153,6 +153,12 @@ final class Components
             }
         }
         return $changed;
+    }
+
+    /** @param class-string $class */
+    private static function hash(string $class, string $path): string
+    {
+        return md5((string) @file_get_contents($path) . Template::header($class));
     }
 
     /**

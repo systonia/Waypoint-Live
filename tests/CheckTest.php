@@ -13,7 +13,13 @@ final class CheckTest extends TestCase
         $this->assertSame([
             '3 Access to an undefined property Waypoint\Live\Tests\Fixtures\Item::$nmae.',
             '3 Access to an undefined property Waypoint\Live\Tests\Fixtures\Sloppy::$cuont.',
+            '6 Access to an undefined property Waypoint\Live\Tests\Fixtures\Item::$nmae.',
         ], array_values(array_map(static fn (array $p) => "{$p['line']} {$p['message']}", $found)));
+    }
+
+    public function testPhpstanResolvesNamesWithTheClassFilesImports(): void
+    {
+        $this->assertSame([], array_values(array_filter(Check::phpstan(dirname(__DIR__)), static fn (array $p) => str_ends_with($p['file'], '/Board.Template.php'))));
     }
 
     public function testProblemsCoverEveryComponentOfTheProject(): void

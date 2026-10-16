@@ -314,6 +314,16 @@ final class CircuitTest extends TestCase
             $this->assertStringContainsString('@if has no @endif', $errors[0]);
             $circuit->handle($this->message(['t' => 'call', 'id' => 'c0', 'm' => 'add', 'a' => []]));
             $this->assertSame(['id' => 'c0', 'html' => '<i data-on-click="add">2</i>'], end($this->sent));
+
+            // The template shares the class file's imports: a changed import compiles it again
+            file_put_contents("$dir/Hot.Template.php", '<i>{{ Mark::class }}</i>');
+            $this->assertTrue($components->reload(static fn () => null));
+            $circuit->changed();
+            $this->assertSame('<i>Waypoint\Live\Tests\Fixtures\Mark</i>', end($this->sent)['html']);
+            file_put_contents("$dir/$class.php", str_replace("Fixtures;\n", "Fixtures;\nuse Lento\\Mark;\n", (string) file_get_contents("$dir/$class.php")));
+            $this->assertTrue($components->reload(static fn () => null));
+            $circuit->changed();
+            $this->assertSame('<i>Lento\Mark</i>', end($this->sent)['html']);
         } finally {
             array_map('unlink', glob("$dir/*") ?: []);
             rmdir($dir);

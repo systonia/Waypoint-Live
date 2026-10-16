@@ -69,11 +69,11 @@ final class Check
             if ($source === false || isset($broken[$path])) {
                 continue;
             }
-            // Line for line: the compiled template leaves PHP on the first line, right after the bind. The closing tag
-            // at the end ends a template that ends in PHP, and is only text after one that ends in HTML
+            // Line for line: the compiled template leaves PHP on the first line, after its namespace and imports and the
+            // bind. The closing tag at the end ends a template that ends in PHP, and is only text after one that ends in HTML
             $generated = "$directory/$selector.php";
-            file_put_contents($generated, "<?php \\" . self::class . '::bind(\\' . $class . '::class, function ($__child, $__action): void { '
-                . Template::compile($source, $components->selectors()) . "\n?><?php });\n");
+            $bind = '\\' . self::class . '::bind(\\' . $class . '::class, function ($__child, $__action): void { ';
+            file_put_contents($generated, '<?php ' . Template::compile($source, $components->selectors(), class: $class, first: $bind) . "\n?><?php });\n");
             $templates[(string) realpath($generated)] = $path;
         }
         if ($templates === []) {

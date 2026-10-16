@@ -5,8 +5,8 @@ namespace Waypoint\Live\Tests;
 use Closure;
 use InvalidArgumentException;
 use PHPUnit\Framework\TestCase;
-use Waypoint\Live\{Directives, Template};
-use Waypoint\Live\Tests\Fixtures\Shelf;
+use Waypoint\Live\{Directives, Problems, Template};
+use Waypoint\Live\Tests\Fixtures\{Board, Shelf};
 
 final class DirectivesTest extends TestCase
 {
@@ -157,6 +157,23 @@ final class DirectivesTest extends TestCase
         $this->assertSame('warning', (new Directives('@code @endcode'))->problems[0]['severity']);
         // A string may hold @endcode
         $this->assertSame(['1: @code has no @endcode'], self::problems("@code \$a = '@endcode';"));
+    }
+
+    public function testATemplateResolvesNamesAsItsClassFileDoes(): void
+    {
+        $template = new Template(__DIR__ . '/Fixtures/Board.Template.php', [], Board::class);
+        $this->assertSame("<p>Calm OPEN open <b> Calm</p>\n", $template->render(new Board(), static fn () => ''));
+        // Group and function imports one by one, the trait in the class body is none
+        $this->assertSame(
+            'namespace Waypoint\Live\Tests\Fixtures; use Waypoint\Live\Component; use Waypoint\Live\Html as Markup; '
+                . 'use Waypoint\Live\Tests\Fixtures\Sub\Phase; use function strtoupper as shout; use Waypoint; ',
+            Template::header(Board::class),
+        );
+        // The header shares the first line: errors keep theirs
+        $this->assertSame(["2 Unmatched ')'"], array_map(
+            static fn (array $p) => "{$p['line']} {$p['message']}",
+            Problems::inTemplate("<p>\n{{ Phase::Open) }}", Board::class, []),
+        ));
     }
 
     public function testATemplateWithProblemsDoesNotCompile(): void

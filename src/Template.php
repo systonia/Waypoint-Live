@@ -5,6 +5,7 @@ namespace Waypoint\Live;
 use Closure;
 use InvalidArgumentException;
 use LogicException;
+use ReflectionClass;
 use Stringable;
 use Throwable;
 use TypeError;
@@ -16,7 +17,8 @@ use WeakMap;
  * `<app-row name="<?= $city ?>" key="<?= $city ?>"></app-row>` places a child component: a value that is a
  * single `<?= expr ?>` passes the value itself (an int, an object, a closure), anything else passes a string.
  * `data-on-click="remove($item)"` binds arguments on the server: the browser only gets an ID for the call.
- * Directives (`{{ }}`, `@foreach`, `@if`, see Directives) become such PHP first.
+ * Directives (`{{ }}`, `@foreach`, `@if`, see Directives) become such PHP first. Names resolve as in the
+ * component's class file: the template shares its namespace and its imports.
  * Compiled once when the plugin starts; the methods its `data-on-*` attributes name are the only ones the
  * browser can call.
  */
@@ -30,8 +32,11 @@ final class Template
     /** @var WeakMap<Throwable, array{string, int}>|null The template and line an error came from, for the developer */
     private static ?WeakMap $origins = null;
 
-    /** @param list<string> $selectors The app's components, expanded where their tag appears. */
-    public function __construct(private readonly string $path, array $selectors = [])
+    /**
+     * @param list<string> $selectors The app's components, expanded where their tag appears.
+     * @param class-string|null $class The component, whose namespace and imports the template shares
+     */
+    public function __construct(private readonly string $path, array $selectors = [], ?string $class = null)
     {
         $source = is_file($path) ? file_get_contents($path) : false;
         if ($source === false) {
@@ -39,7 +44,7 @@ final class Template
         }
         $actions = [];
         try {
-            $this->code = self::compile($source, $selectors, $actions);
+            $this->code = self::compile($source, $selectors, $actions, $class);
         } catch (InvalidArgumentException $e) {
             $error = new InvalidArgumentException("Template '$path', " . $e->getMessage(), 0, $e);
             self::$origins ??= new WeakMap();
@@ -50,13 +55,15 @@ final class Template
     }
 
     /**
-     * @internal The PHP code a template becomes; every line stays where it is in the template.
+     * @internal The PHP code a template becomes; every line stays where it is in the template. It starts in PHP, with
+     * the namespace and imports of $class, then $first.
      *
      * @param list<string> $selectors
      * @param list<string> $actions
      * @param-out list<string> $actions The methods its `data-on-*="method"` attributes name
+     * @param class-string|null $class
      */
-    public static function compile(string $source, array $selectors, array &$actions = []): string
+    public static function compile(string $source, array $selectors, array &$actions = [], ?string $class = null, string $first = ''): string
     {
         $directives = new Directives($source);
         foreach ($directives->problems as $problem) {
@@ -64,7 +71,96 @@ final class Template
                 throw new InvalidArgumentException("line {$problem['line']}: {$problem['message']}");
             }
         }
-        return '?>' . self::escapeEchoes(self::children(self::calls($directives->compile(), $actions), $selectors));
+        return self::header($class) . $first . '?>' . self::escapeEchoes(self::children(self::calls($directives->compile(), $actions), $selectors));
+    }
+
+    /**
+     * @internal What a template of $class starts with, all on its first line: the namespace and the imports of the
+     * class's file. A name written from the root without a leading backslash (`App\Status` in namespace `App\Shop`)
+     * still means the root's, as in a template without a namespace.
+     *
+     * @param class-string|null $class
+     */
+    public static function header(?string $class): string
+    {
+        [$namespace, $imports] = $class !== null ? self::imports((string) (new ReflectionClass($class))->getFileName()) : ['', []];
+        $root = strstr($namespace, '\\', true) ?: $namespace;
+        if ($root !== '' && !isset($imports['class ' . strtolower($root)])) {
+            $imports[] = "use $root;";
+        }
+        return ($namespace !== '' ? "namespace $namespace; " : '') . implode(' ', $imports) . ($imports !== [] ? ' ' : '');
+    }
+
+    /**
+     * The namespace of a PHP file and its imports up to its first class, enum, interface or trait (a trait's `use`
+     * in a class body is none), one statement each, by kind and alias: PHP refuses a second import of an alias.
+     *
+     * @return array{string, array<string, string>}
+     */
+    private static function imports(string $file): array
+    {
+        $tokens = token_get_all((string) @file_get_contents($file));
+        $namespace = '';
+        $imports = [];
+        $previous = ';';
+        for ($i = 0; isset($tokens[$i]); $i++) {
+            $token = $tokens[$i];
+            $id = is_array($token) ? $token[0] : null;
+            if (in_array($id, [T_CLASS, T_ENUM, T_INTERFACE, T_TRAIT], true) && $previous !== '::') {
+                break;
+            }
+            if (in_array($id, [T_WHITESPACE, T_COMMENT, T_DOC_COMMENT, T_OPEN_TAG], true)) {
+                continue;
+            }
+            // A closure's use ($x) follows a ), an import a statement
+            if ($id === T_NAMESPACE || ($id === T_USE && in_array($previous, [';', '{', '}'], true))) {
+                $statement = '';
+                for ($i++; isset($tokens[$i]) && $tokens[$i] !== ';' && !($id === T_NAMESPACE && $tokens[$i] === '{'); $i++) {
+                    $part = $tokens[$i];
+                    if (!is_array($part) || !in_array($part[0], [T_COMMENT, T_DOC_COMMENT], true)) {
+                        $statement .= is_array($part) ? $part[1] : $part;
+                    }
+                }
+                $statement = trim((string) preg_replace('/\s+/', ' ', $statement));
+                if ($id === T_NAMESPACE) {
+                    $namespace = $statement;
+                } else {
+                    $imports = [...$imports, ...self::statements($statement, $namespace)];
+                }
+                $previous = ';';
+                continue;
+            }
+            $previous = is_array($token) ? $token[1] : $token;
+        }
+        return [$namespace, $imports];
+    }
+
+    /**
+     * `use function A\{b, c as d}` as `use function A\b; use function A\c as d;`, by kind and alias.
+     *
+     * @return array<string, string>
+     */
+    private static function statements(string $statement, string $namespace): array
+    {
+        [$kind, $rest] = preg_match('/^(function|const) (.*)$/is', $statement, $m) === 1 ? [strtolower($m[1]), $m[2]] : ['', $statement];
+        [$prefix, $items] = preg_match('/^(.*?)\s*\{(.*)\}$/s', $rest, $m) === 1 ? [trim($m[1], '\\ ') . '\\', explode(',', $m[2])] : ['', explode(',', $rest)];
+        $imports = [];
+        foreach ($items as $item) {
+            if (preg_match('/^\s*(?:(function|const)\s+)?([\w\\\\]+)(?:\s+as\s+(\w+))?\s*$/i', $item, $m) !== 1) {
+                continue;
+            }
+            $itemKind = $m[1] !== '' ? strtolower($m[1]) : $kind;
+            $name = ltrim($prefix . $m[2], '\\');
+            $last = substr((string) strrchr('\\' . $name, '\\'), 1);
+            $alias = ($m[3] ?? '') !== '' ? $m[3] : $last;
+            // Outside a namespace PHP warns that `use Closure;` does nothing
+            if ($namespace === '' && !str_contains($name, '\\') && $alias === $name) {
+                continue;
+            }
+            $key = ($itemKind !== '' ? $itemKind : 'class') . ' ' . ($itemKind === 'const' ? $alias : strtolower($alias));
+            $imports[$key] = 'use ' . ($itemKind !== '' ? "$itemKind " : '') . $name . ($alias !== $last ? " as $alias" : '') . ';';
+        }
+        return $imports;
     }
 
     /**

@@ -28,7 +28,7 @@ final class Problems
         $comments = self::comments($php);
         $problems = [
             ...$directives->problems,
-            ...($comments !== [] || in_array('error', array_column($directives->problems, 'severity'), true) ? $comments : self::syntax($source, array_keys($components))),
+            ...($comments !== [] || in_array('error', array_column($directives->problems, 'severity'), true) ? $comments : self::syntax($source, array_keys($components), $class)),
             ...self::actions($source, $class),
             ...self::children($php, $components),
         ];
@@ -81,14 +81,15 @@ final class Problems
 
     /**
      * @param list<string> $selectors
+     * @param class-string $class
      * @return list<array{line: int, message: string, severity: 'error'}>
      */
-    private static function syntax(string $source, array $selectors): array
+    private static function syntax(string $source, array $selectors, string $class): array
     {
         try {
             // Compiled only: `return` comes first, so nothing of it runs. The compiler keeps the lines.
             // ponytail: a function declared in a template would be declared here too
-            eval('return; ' . Template::compile($source, $selectors));
+            eval(Template::compile($source, $selectors, class: $class, first: 'return; '));
             return [];
         } catch (CompileError $e) {
             return [['line' => $e->getLine(), 'message' => $e->getMessage(), 'severity' => 'error']];
