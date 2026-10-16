@@ -15,7 +15,7 @@ use Waypoint\Logger;
 #[Controller]
 final class LiveController
 {
-    // ponytail: fixed per worker, Blazor's defaults; options once an app needs others
+    // ponytail: fixed per worker; options once an app needs others
     private const PARK_SECONDS = 180.0;
     private const MAX_PARKED = 100;
 
@@ -85,7 +85,7 @@ final class LiveController
     }
 
     /**
-     * Keeps a circuit whose connection dropped, so the browser can come back to it: like Blazor Server, for a
+     * Keeps a circuit whose connection dropped, so the browser can come back to it, for a
      * while, then it is closed. Per worker: a browser that reconnects to another worker starts over.
      */
     private static function park(string $token, Circuit $circuit): void

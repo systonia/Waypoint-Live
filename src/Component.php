@@ -5,7 +5,7 @@ namespace Waypoint\Live;
 use Attribute;
 
 /**
- * Marks a class as a live component, Angular style:
+ * Marks a class as a live component:
  *
  *     #[Component]
  *     final class CitySearch { public string $query = ''; public function search(string $query): void { ... } }

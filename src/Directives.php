@@ -241,7 +241,7 @@ final class Directives
     private static function closest(string $name): ?string
     {
         foreach ([...self::WITH_EXPRESSION, ...self::WITHOUT] as $directive) {
-            // Not for short names: @on (Vue) or @id are no typo of @if
+            // Not for short names: @on or @id in plain text are no typo of @if
             if (strlen($name) >= 4 && levenshtein($name, $directive) <= 2) {
                 return $directive;
             }

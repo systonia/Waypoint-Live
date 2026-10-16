@@ -1,7 +1,7 @@
 # Waypoint Live
 
 Live components for [Waypoint](https://github.com/systonia/Waypoint) under [Tenma](https://tenma.dev): the
-model of Blazor Server in PHP. A component is a PHP class with state and actions. It renders into the page
+components run on the server, in PHP. A component is a PHP class with state and actions. It renders into the page
 like any view, and after that its events and new renders travel over one WebSocket per browser tab. The
 component calls services directly; there is no API route and no `fetch()` in between.
 
@@ -124,7 +124,7 @@ A template places other components by their tag:
   (a bool, an object, a closure); anything else passes a string.
 - A child keeps its state as long as the parent's template keeps placing it: by `key`, or without one by its
   position among the tags of that selector. A child that is no longer placed is removed, its timers stop.
-- On a parent render only inputs whose value changed are set again, as in Angular: the child keeps what it
+- On a parent render only inputs whose value changed are set again: the child keeps what it
   changed itself.
 - Events go up through a closure input: the child calls `($this->pick)($this->city)`, the parent's method runs.
   That method doesn't need to be in the parent's template, so the browser can't call it directly.
@@ -133,8 +133,7 @@ A template places other components by their tag:
 ## Services per tab
 
 Services come in through `#[Inject]` as in a controller: one instance for the whole app. `#[Scoped]` on a
-service class makes it one instance per circuit, that is per browser tab, like a scoped service in Blazor
-Server:
+service class makes it one instance per circuit, that is per browser tab:
 
 ```php
 #[Scoped]
@@ -301,7 +300,7 @@ oldest goes first; one without components is not kept), with its timers paused. 
 1, 2, 4 ... at most 30 seconds and sends the circuit's token; the server hands back the same components with
 their state, renders them once to catch up and starts the timers again. Events from the time offline are
 queued and sent afterwards. If the circuit is gone, the components start again from the page's inputs and the
-queued events are dropped. A reload is a new circuit, as in Blazor.
+queued events are dropped. A reload is a new circuit.
 
 The token lives only in the page's memory and is a bearer secret for the circuit: whoever has it gets the
 components while they are parked, but only as the same user. A circuit resumes only if the new connection's

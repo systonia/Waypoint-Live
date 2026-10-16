@@ -626,7 +626,7 @@ final class Circuit
                 [$component, $template] = $this->live->create($selector, $inputs, $this->services);
                 $child = $node->children[$key] = $this->node($node->id . '.' . $node->next++, $selector, $component, $template, $node->root ?? $node, "$node->path/$key");
             } else {
-                // As in Angular: only inputs whose value changed are set again, the child keeps what it changed itself
+                // Only inputs whose value changed are set again, the child keeps what it changed itself
                 $this->live->setInputs($child->component, $selector, array_filter(
                     $inputs,
                     static fn (mixed $value, string|int $name) => !array_key_exists($name, $child->inputs) || $child->inputs[$name] !== $value,
