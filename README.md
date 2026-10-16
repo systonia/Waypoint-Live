@@ -108,6 +108,12 @@ Templates also take directives, mixed with plain PHP as you like:
 - `@if (...)`, `@elseif (...)`, `@else`, `@endif`, `@foreach (...)`, `@endforeach`. `@@` prints an `@`.
 - A directive starts a line or follows whitespace or `>`, so `info@example.com`, `@media` in CSS and
   `@click` stay text. Inside `<?php ?>` nothing is a directive.
+- `@code ... @endcode` holds PHP, as `<?php ... ?>`: `@code $order = $this->order() @endcode`.
+- A template resolves class names as its component's class file does: same namespace, same `use` statements.
+  `@use (App\Ordering\OrderStatus)` or `@use (App\Ordering\Pickup as Slot)` adds one for the template.
+- `<li class="row" @class.late="$order->late">` adds `late` to the class while the condition holds; the name
+  runs to the first `=` outside `[ ]`, so Tailwind classes like `md:w-1/2` work.
+  `classes('row', ['late' => $order->late])` builds the same list in PHP, in every template without an import.
 - A block that does not close, or closes another one, keeps the template from compiling, with its line; so does
   a `/*` without its `*/` inside `{{ }}`, which would comment out the template up to the next `*/`. In the
   editor these show while typing; `@forech` gets a hint and stays text.

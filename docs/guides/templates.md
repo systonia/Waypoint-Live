@@ -1,10 +1,10 @@
 ---
 title: Templates
-description: Write a component's template with escaped output, comments, @if and @foreach, plain PHP, and Html for markup you built yourself.
+description: Write a component's template with escaped output, comments, @if and @foreach, @code, class names from the component's imports, conditional classes, plain PHP, and Html for markup you built yourself.
 order: 20
 ---
 
-A template is a PHP file rendered with `$this` as the component, private properties and methods included. On top of PHP it knows a few directives: `{{ }}` to print, `{{/* */}}` for comments, and `@if` and `@foreach` blocks. Directives and plain PHP mix freely; each directive becomes PHP on the same line, so error messages and the editor point at the template's own lines.
+A template is a PHP file rendered with `$this` as the component, private properties and methods included. On top of PHP it knows a few directives: `{{ }}` to print, `{{/* */}}` for comments, `@if` and `@foreach` blocks, `@code` for a few lines of PHP, `@use` to import a class and `@class.name` for classes that come and go. Directives and plain PHP mix freely; each directive becomes PHP on the same line, so error messages and the editor point at the template's own lines.
 
 ## A template with everything
 
@@ -132,6 +132,9 @@ An HTML comment `<!-- -->` stays in the HTML the browser gets, as in any page. N
 | `@endif` | `<?php endif ?>` |
 | `@foreach (expr)` | `<?php foreach (expr): ?>` |
 | `@endforeach` | `<?php endforeach ?>` |
+| `@code` ... `@endcode` | `<?php ... ?>` |
+| `@use (App\Status)` | `use App\Status;` for the whole template |
+| `@class.late="$cond"` | the class `late` in the tag's `class` attribute while `$cond` is truthy |
 | `@@` | a literal `@` |
 
 The condition may span lines and contain parentheses and strings: `@if (in_array('a)', $this->tags, true))` works.
@@ -155,7 +158,7 @@ A block that does not close, an `@endif` that closes an `@foreach`, a `{{` witho
 Template '/srv/shop/src/ProductCard.Template.php', line 4: @if has no @endif
 ```
 
-So does a `/*` without its `*/` inside `{{ }}` or a directive's parentheses, which would comment out the template up to the next `*/`. A misspelt directive such as `@forech` gets a warning (`Did you mean @foreach?`) and stays text. In the editor these show while you type ([Development tools](development.md)).
+So does a `/*` without its `*/` inside `{{ }}`, `@code` or a directive's parentheses, which would comment out the template up to the next `*/`. A misspelt directive such as `@forech` gets a warning (`Did you mean @foreach?`) and stays text. In the editor these show while you type ([Development tools](development.md)).
 
 ## Plain PHP
 
@@ -172,6 +175,108 @@ A template is PHP, and PHP's own syntax works as in any view. These are the same
 ```
 
 A local variable for the rest of the template is plain PHP: `<?php $count = count($this->tags) ?>`. Keep logic in the class, though: a private method such as `visible()` is easier to test and to read than a block of PHP in the HTML.
+
+### @code
+
+`@code ... @endcode` is the same as `<?php ... ?>`, written like the other directives:
+
+```html
+@code
+    $order = $this->order();
+    $late = $order->readyAt < new \DateTimeImmutable();
+@endcode
+
+<h1>{{ $order->number }}</h1>
+@if ($late)
+    <p>Ready soon</p>
+@endif
+```
+
+On one line: `@code $order = $this->order() @endcode`. The last statement needs no `;`.
+
+- The body is PHP only: `{{ }}` and `@if` inside it are PHP text, not directives. It ends at the first `@endcode` that is not inside one of its strings or comments.
+- A `?>` in the body would end the PHP before `@endcode` and keeps the template from compiling. So do an `@code` without `@endcode`, an `@endcode` without `@code` and a `/*` without `*/`. An empty `@code` gets a warning.
+- A value the template needs is best a property or method of the component: typed, and seen by the editor and PHPStan without help. `@code` is for small helpers of the markup. When the template only needs a yes or no, a method says it best: `@if ($order->status->isPending())`.
+
+## Class names in a template
+
+A template resolves names as its component's class file does: it shares the file's namespace and its `use` statements (classes, `use function`, `use const` and group imports). With this class:
+
+```php
+<?php
+// src/Shop/OrderTracker.php
+
+namespace Bakery\Shop;
+
+use Bakery\Ordering\OrderStatus;
+use Waypoint\Live\Component;
+
+#[Component]
+final class OrderTracker
+{
+    // ...
+}
+```
+
+its template names the enum as the class does, and a class of `Bakery\Shop` without any import:
+
+```html
+@if ($order->status === OrderStatus::Pending)
+    <p>{{ Receipt::label($order) }}</p>   <!-- Bakery\Shop\Receipt -->
+@endif
+```
+
+- A name from the root without a leading backslash still means the root's: `Bakery\Ordering\OrderStatus::Pending` works as well as `\Bakery\Ordering\OrderStatus::Pending`.
+- A class of the global namespace needs a leading backslash or an import, as in the class file: `new \DateTimeImmutable()`.
+- In development a changed `use` in the class file compiles the template again, like a saved template.
+- An import that only the template uses looks unused in the class to PHPStan and the editor. `@use` puts it in the template instead.
+
+### @use
+
+`@use` imports a class, an enum, an interface or a trait for the whole template:
+
+```html
+@use (Bakery\Ordering\OrderStatus)
+@use (Bakery\Ordering\Pickup as Slot)
+
+@if ($order->status === OrderStatus::Pending)
+    <p>{{ Slot::next()->label() }}</p>
+@endif
+```
+
+- One name per `@use`, with or without `as`. It counts wherever it stands; put them at the top.
+- An `@use` alias wins over an import of the same alias in the class file.
+- A name that is no class keeps the template from compiling, as does a second `@use` of the same alias. A class that does not exist gets a warning: the template may name it only in a branch that never runs.
+
+## Conditional classes
+
+A class that depends on a condition is a `@class.` in the tag, with the class name after the dot and the condition as its value:
+
+```html
+<li class="row" @class.late="$order->late" @class.bg-green-100="$order->isReady()">
+```
+
+renders `<li class="row late">` while `$order->late` is true and the order is not ready. The conditions go into the tag's `class` attribute; without one the tag gets one. The classes of the conditions come once each, joined by one space, with no space left over. When the state changes, the next render sends the new `class`.
+
+- The value is PHP like every expression in a template: `@class.late="$this->isLate()"`. A plain word such as `isLate` is no PHP.
+- The class name runs to the first `=` outside square brackets, so every Tailwind class works: `@class.md:w-1/2="..."`, `@class.hover:underline`, `@class.bg-[#ff0000]`, `@class.data-[state=open]:block`, `@class.[&>*]:p-4`, `@class.!font-bold`. The browser never sees `@class.`: the compiler removes it.
+- Tailwind reads the template file as text, so it finds these names and generates their CSS as for any other class.
+- In a tag over several lines, an error in a condition is reported at the line of the `class` attribute, or of the first `@class.` when there is none.
+- `@class.` outside a start tag, without a name or without a value keeps the template from compiling. So does `@class.` on a child component's tag: a child takes inputs, so put the class on an element inside its template or pass an input. Two `class` attributes in a tag with `@class.` are an error, the same class twice a warning.
+
+### classes()
+
+For classes computed in PHP or used more than once, [`classes()`](../reference/Waypoint/Live/index.md#classes) builds the same list. Every template can call it without an import, and it works outside templates as `Waypoint\Live\classes()`:
+
+```html
+<li class="{{ classes('row', ['late' => $order->late, 'bg-green-100 font-bold' => $order->isReady()]) }}">
+```
+
+- A string is always added and may hold several classes (`'row px-4'`).
+- In an array, a value under an integer key is always added; a string key is added when its value is truthy. A key may hold several classes.
+- Each class comes once, in order, joined by one space; empty strings and `null` add nothing. The result is a plain string: `{{ }}` escapes it like any other.
+
+A few toggles read best as `@class.`; a list computed in PHP or used in several places reads best as `classes()` or a component method that returns it.
 
 ## $this and the editor
 

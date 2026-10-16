@@ -1,6 +1,6 @@
 ---
 title: "Waypoint\\Live"
-description: "The classes, interfaces, traits and enums in Waypoint\\Live."
+description: "The classes, interfaces, traits, enums and functions in Waypoint\\Live."
 order: 200
 generated: true
 ---
@@ -22,3 +22,24 @@ generated: true
 - [`LiveOptions`](LiveOptions.md) · class: Live's options, set with `$app->configure(fn (LiveOptions $live) => $live->editor = '...')`.
 - [`LivePlugin`](LivePlugin.md) · final class: Register with `$app->plugin(new LivePlugin([Counter::class, Search::class]))`: classes with a #[Component] attribute, and only these can be created; the browser names them by selector.
 - [`Scoped`](Scoped.md) · final class: One instance per circuit (browser tab) instead of one per app: a cart, a wizard's progress, a tab's filters.
+
+## Functions
+
+### classes()
+
+```php
+function classes(array|string ...$parts): string
+```
+
+CSS classes from strings and conditions, for a `class` attribute: a string is always added, and so is a value
+under an integer key of an array; a string key is added when its value is truthy. A string or key may hold
+several classes. Each class comes once, in order, joined by one space. Every template can call it without an
+import:
+
+    <li class="{{ classes('row', ['late' => $order->late, 'bg-green-100 font-bold' => $order->isReady()]) }}">
+
+**Parameters**
+
+- `...$parts` `string|array<array-key, mixed>`
+
+**Returns** `string`
