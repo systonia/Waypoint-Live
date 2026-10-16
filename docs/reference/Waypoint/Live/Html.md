@@ -26,7 +26,7 @@ public function __construct(private readonly string $html)
 
 **Parameters**
 
-- `$html` `string` — Markup that is safe as it is: escape everything from a user before it goes in
+- `$html` `string`: Markup that is safe as it is: escape everything from a user before it goes in
 
 ### __toString()
 

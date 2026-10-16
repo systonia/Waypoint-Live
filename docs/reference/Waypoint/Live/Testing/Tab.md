@@ -86,7 +86,7 @@ Places a top-level component as the browser does when it connects, and renders i
 **Parameters**
 
 - `$selector` `string`
-- `$inputs` `array<string, mixed>` — As the page passes them
+- `$inputs` `array<string, mixed>`: As the page passes them
 
 **Returns** [`Mounted`](Mounted.md)
 

@@ -28,14 +28,14 @@ or a missing template is refused at once.
 
 **Parameters**
 
-- `...$classes` `class-string` — Classes with a #[Component] attribute
+- `...$classes` `class-string`: Classes with a #[Component] attribute
 
 **Returns** [`Components`](Components.md)
 
 **Throws**
 
-- [`InvalidArgumentException`](https://www.php.net/manual/en/class.invalidargumentexception.php) — for a class that cannot be a component
-- [`LogicException`](https://www.php.net/manual/en/class.logicexception.php) — once a page has used the components
+- [`InvalidArgumentException`](https://www.php.net/manual/en/class.invalidargumentexception.php): for a class that cannot be a component
+- [`LogicException`](https://www.php.net/manual/en/class.logicexception.php): once a page has used the components
 
 ### selectors()
 
@@ -43,4 +43,4 @@ or a missing template is refused at once.
 public function selectors(): array
 ```
 
-**Returns** `list<string>` — The selectors of every component added so far
+**Returns** `list<string>`: The selectors of every component added so far

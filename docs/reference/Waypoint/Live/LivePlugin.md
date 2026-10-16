@@ -30,7 +30,7 @@ public function __construct(array $components = [])
 
 **Parameters**
 
-- `$components` `list<class-string>` — Classes with a #[Component] attribute; other plugins add theirs to Components
+- `$components` `list<class-string>`: Classes with a #[Component] attribute; other plugins add theirs to Components
 
 ### middlewares()
 
@@ -38,7 +38,7 @@ public function __construct(array $components = [])
 public function middlewares(): array
 ```
 
-**Returns** `list<callable>` — App-level middlewares, added at attach() in registration order.
+**Returns** `list<callable>`: App-level middlewares, added at attach() in registration order.
 
 ### name()
 
@@ -77,7 +77,7 @@ Called by Waypoint at attach(): registers the plugin, Components and Broadcast i
 public function classes(): array
 ```
 
-**Returns** `list<class-string>` — Controllers and #[Manager] classes attach() adds.
+**Returns** `list<class-string>`: Controllers and #[Manager] classes attach() adds.
 
 ### hooks()
 
@@ -85,7 +85,7 @@ public function classes(): array
 public function hooks(): array
 ```
 
-**Returns** `list<object>` — Instances of Endpoint, Fallback, RouteAttributeCompiler, Guard, ResponseHook, ArgumentBinder, Renderer, OpenApiExtension, ViewHelper, ClientAsset.
+**Returns** `list<object>`: Instances of Endpoint, Fallback, RouteAttributeCompiler, Guard, ResponseHook, ArgumentBinder, Renderer, OpenApiExtension, ViewHelper, ClientAsset.
 
 ### helpers()
 
@@ -93,7 +93,7 @@ public function hooks(): array
 public function helpers(): array
 ```
 
-**Returns** `array<string, callable>` — name => callable
+**Returns** `array<string, callable>`: name => callable
 
 ### assets()
 
@@ -101,7 +101,7 @@ public function helpers(): array
 public function assets(): array
 ```
 
-**Returns** `array<string, string>` — {logical filename ending in .css or .js => absolute source path}
+**Returns** `array<string, string>`: {logical filename ending in .css or .js => absolute source path}
 
 ### after()
 

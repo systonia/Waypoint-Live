@@ -72,7 +72,7 @@ Submits the data-on-submit form that $target names or selects, with $form as its
 **Parameters**
 
 - `$target` `string`
-- `$form` `array<string, mixed>` — The form's fields as the browser sends them: `name[]` fields as a list
+- `$form` `array<string, mixed>`: The form's fields as the browser sends them: `name[]` fields as a list
 
 **Returns** [`Mounted`](Mounted.md)
 

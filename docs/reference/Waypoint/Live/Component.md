@@ -63,5 +63,5 @@ public function __construct(
 
 **Parameters**
 
-- `$selector` `string|null` — The tag that places the component: lowercase, with a dash (`shop-cart`); null for `app-` and the class name in kebab case
-- `$template` `string|null` — The template file, relative to the class's file; null for `<ClassName>.Template.php` next to it
+- `$selector` `string|null`: The tag that places the component: lowercase, with a dash (`shop-cart`); null for `app-` and the class name in kebab case
+- `$template` `string|null`: The template file, relative to the class's file; null for `<ClassName>.Template.php` next to it

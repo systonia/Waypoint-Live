@@ -35,4 +35,4 @@ public function __construct(public readonly float $seconds)
 
 **Parameters**
 
-- `$seconds` `float` — Time between two runs, more than 0; the first run comes $seconds after the component is created
+- `$seconds` `float`: Time between two runs, more than 0; the first run comes $seconds after the component is created
