@@ -311,6 +311,9 @@ components start over. It is never in a URL, a cookie or storage.
 ## Security
 
 - Only components listed in `LivePlugin` can be created, by selector; the browser never names a class.
+- The guards of a page's route do not protect its components: any browser that reaches `/_live` can mount any
+  listed component with any inputs. A component whose data or actions are not for everyone checks the user
+  itself, from its `Connection`: in what its template shows and in every action.
 - The browser can only call public methods that the template names in a `data-on-*` attribute. Any other
   public method stays out of reach, and so does one named only in commented-out markup (`<!-- -->`, `{{/* */}}`). A method the template calls with arguments (`remove($item)`) is reachable
   only through the IDs of the last two renders, with the arguments the template bound and at most the one value
