@@ -265,6 +265,22 @@ final class CircuitTest extends TestCase
         $this->assertCount(1, $this->reported);
     }
 
+    public function testALateClickOnARemovedItemNeverHitsAnItemCreatedLater(): void
+    {
+        $circuit = $this->circuit();
+        $circuit->handle($this->message(['t' => 'mount', 'id' => 'c0', 'c' => 'test-shop', 'p' => []]));
+        preg_match('/data-on-click="(remove~\w+)">coffee/', $this->sent[0]['html'], $coffee);
+
+        // Once coffee is out of both renders' tables, PHP gives its object id to the next new product
+        $circuit->handle($this->message(['t' => 'call', 'id' => 'c0', 'm' => $coffee[1], 'a' => []]));
+        $circuit->handle($this->message(['t' => 'call', 'id' => 'c0', 'm' => 'add', 'a' => []]));
+        $circuit->handle($this->message(['t' => 'call', 'id' => 'c0', 'm' => 'add', 'a' => []]));
+        $circuit->handle($this->message(['t' => 'call', 'id' => 'c0', 'm' => $coffee[1], 'a' => []]));
+
+        $this->assertSame(2, substr_count(end($this->sent)['html'], '>new</button>'));
+        $this->assertSame([], $this->reported);
+    }
+
     public function testASavedTemplateRendersInEveryTabAndKeepsTheState(): void
     {
         // A component of its own in a temporary directory: its template gets rewritten

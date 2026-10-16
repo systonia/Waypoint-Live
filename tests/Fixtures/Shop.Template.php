@@ -3,3 +3,4 @@
 <input data-on-input="rename($product)">
 @endforeach
 <button data-on-click="reverse">reverse</button>
+<button data-on-click="add">add</button>

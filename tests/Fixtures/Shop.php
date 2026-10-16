@@ -33,4 +33,9 @@ final class Shop
     {
         $this->products = array_reverse($this->products);
     }
+
+    public function add(): void
+    {
+        $this->products[] = new Product('new');
+    }
 }

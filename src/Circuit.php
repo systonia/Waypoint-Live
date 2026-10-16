@@ -8,6 +8,7 @@ use LogicException;
 use ReflectionMethod;
 use ReflectionObject;
 use Throwable;
+use WeakMap;
 use Waypoint\Attributes\Inject;
 use Waypoint\Http\{Request, UploadedFile};
 
@@ -41,6 +42,11 @@ final class Circuit
 
     private Broadcast $broadcast;
 
+    /** @var WeakMap<object, int> Objects bound to calls, numbered in the order they first were */
+    private WeakMap $objects;
+
+    private int $nextObject = 0;
+
     /** What the circuit is doing, for the developer's details of an error: `mount`, `call "add"`, `#[Every] tick` */
     private string $cause = '';
 
@@ -71,6 +77,7 @@ final class Circuit
     public function __construct(private LivePlugin $live, private Closure $send, private Closure $report, ?Closure $every = null, ?Request $request = null)
     {
         $this->services = $live->scope();
+        $this->objects = new WeakMap();
         $this->connection = new Connection($request ?? Request::fromParts('GET', '/'));
         $this->services->put($this->connection);
         $this->every = $every ?? static fn (float $seconds, Closure $work): Closure => \Tenma::setInterval($work, $seconds)->cancel(...);
@@ -596,8 +603,8 @@ final class Circuit
         $node->calls = [];
         // The same method with the same values and objects gets the same ID in every render: a list that is
         // reordered keeps its IDs, an item that is gone takes its ID along
-        $action = static function (string $method, array $args) use ($node): string {
-            $id = $method . '~' . hash('xxh3', self::identity($args));
+        $action = function (string $method, array $args) use ($node): string {
+            $id = $method . '~' . hash('xxh3', $this->identity($args));
             $node->calls[$id] = [$method, array_values($args)];
             return $id;
         };
@@ -635,18 +642,21 @@ final class Circuit
         return $html;
     }
 
-    /** Values by value, objects by identity: a bound object stays alive in the table, so its ID is not reused. */
-    private static function identity(mixed $value): string
+    /**
+     * Values by value, objects by a number the circuit never gives again: PHP reuses an object's
+     * spl_object_id once it is freed, and a late click on a removed item would hit the item that got its id.
+     */
+    private function identity(mixed $value): string
     {
         if (is_object($value)) {
-            return 'o' . spl_object_id($value) . ';';
+            return 'o' . ($this->objects[$value] ??= $this->nextObject++) . ';';
         }
         if (!is_array($value)) {
             return serialize($value);
         }
         $identity = '[';
         foreach ($value as $key => $item) {
-            $identity .= serialize($key) . self::identity($item);
+            $identity .= serialize($key) . $this->identity($item);
         }
         return $identity . ']';
     }
