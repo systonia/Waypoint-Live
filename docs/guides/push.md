@@ -1,6 +1,6 @@
 ---
 title: Timers, broadcasts and server push
-description: Update a component from the server with #[Every] timers, render other tabs with Broadcast, and reach every worker with Tenma::publish().
+description: "Update a component from the server with #[Every] timers, render other tabs with Broadcast, and reach every worker with Tenma::publish()."
 order: 100
 ---
 

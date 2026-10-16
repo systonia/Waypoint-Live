@@ -1,6 +1,6 @@
 ---
 title: Components
-description: Declare a live component with #[Component], give it state and inputs, and know when it is created and dropped.
+description: "Declare a live component with #[Component], give it state and inputs, and know when it is created and dropped."
 order: 10
 ---
 

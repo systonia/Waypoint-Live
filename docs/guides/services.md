@@ -1,6 +1,6 @@
 ---
 title: Services
-description: Inject the app's services into components, keep state per browser tab with #[Scoped], and the rule that an app-wide service may not inject a scoped one.
+description: "Inject the app's services into components, keep state per browser tab with #[Scoped], and the rule that an app-wide service may not inject a scoped one."
 order: 60
 ---
 
