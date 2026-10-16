@@ -5,7 +5,7 @@ namespace Waypoint\Live;
 use Attribute;
 
 /**
- * Marks a class as a live component:
+ * Marks a class as a live component, whose state stays on the server while its template shows in the browser.
  *
  *     #[Component]
  *     final class CitySearch { public string $query = ''; public function search(string $query): void { ... } }
@@ -25,6 +25,12 @@ use Attribute;
 #[Attribute(Attribute::TARGET_CLASS)]
 final class Component
 {
+    /**
+     * @param string|null $selector The tag that places the component: lowercase, with a dash (`shop-cart`); null for
+     *     `app-` and the class name in kebab case
+     * @param string|null $template The template file, relative to the class's file; null for
+     *     `<ClassName>.Template.php` next to it
+     */
     public function __construct(public readonly ?string $selector = null, public readonly ?string $template = null)
     {
     }

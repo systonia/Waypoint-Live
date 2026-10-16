@@ -38,7 +38,11 @@ final class Mounted
         return $this->call($this->element('data-on-change', $target), 'data-on-change', [$value]);
     }
 
-    /** @param array<string, mixed> $form The form's fields as the browser sends them */
+    /**
+     * Submits the data-on-submit form that $target names or selects, with $form as its fields.
+     *
+     * @param array<string, mixed> $form The form's fields as the browser sends them: `name[]` fields as a list
+     */
     public function submit(string $target, array $form): self
     {
         return $this->call($this->element('data-on-submit', $target), 'data-on-submit', [(object) $form]);
@@ -83,6 +87,7 @@ final class Mounted
         return $this;
     }
 
+    /** That $text, escaped as the template prints it, is not in the component's HTML. */
     public function assertDontSee(string $text): self
     {
         Assert::assertStringNotContainsString(htmlspecialchars($text, ENT_QUOTES), $this->html());

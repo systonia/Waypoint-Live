@@ -56,6 +56,10 @@ final class LivePlugin extends PluginBase implements ViewHelper, ClientAsset, Re
         return 'live';
     }
 
+    /**
+     * Called by Waypoint at attach(): registers the plugin, Components and Broadcast in the container. In development
+     * (Environment::isDev()) under Tenma it also reloads saved templates and checks every component.
+     */
     public function boot(Container $container, Environment $environment, Logger $logger, LiveOptions $options): void
     {
         $this->container = $container;
@@ -197,7 +201,7 @@ final class LivePlugin extends PluginBase implements ViewHelper, ClientAsset, Re
     }
 
     /**
-     * A listed component with its #[Inject] properties and its inputs set; anything else is refused.
+     * @internal A listed component with its #[Inject] properties and its inputs set; anything else is refused.
      *
      * @param array<array-key, mixed> $inputs
      * @return array{object, Template}
@@ -213,7 +217,7 @@ final class LivePlugin extends PluginBase implements ViewHelper, ClientAsset, Re
     }
 
     /**
-     * Sets #[Input] properties; any other name is refused.
+     * @internal Sets #[Input] properties; any other name is refused.
      *
      * @param array<array-key, mixed> $inputs
      */
@@ -290,7 +294,7 @@ final class LivePlugin extends PluginBase implements ViewHelper, ClientAsset, Re
         return $page;
     }
 
-    /** A new circuit's services: its own #[Scoped] ones, the app's for the rest. */
+    /** @internal A new circuit's services: its own #[Scoped] ones, the app's for the rest. */
     public function scope(): Scope
     {
         return new Scope($this->container);

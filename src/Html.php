@@ -10,6 +10,7 @@ use Stringable;
  */
 final readonly class Html implements Stringable
 {
+    /** @param string $html Markup that is safe as it is: escape everything from a user before it goes in */
     public function __construct(private string $html)
     {
     }

@@ -37,6 +37,7 @@
     },
     "scripts": {
         "test": "vendor/bin/phpunit --testdox",
-        "stan": "phpstan analyse"
+        "stan": "phpstan analyse",
+        "reference": "tenma docs src/*.php src/Testing --out docs/reference"
     }
 }

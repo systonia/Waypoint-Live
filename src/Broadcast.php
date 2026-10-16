@@ -21,6 +21,7 @@ final class Broadcast
     /** @var WeakMap<Circuit, true> The circuits whose browser is connected. */
     private WeakMap $circuits;
 
+    /** @internal LivePlugin creates the one instance of the app */
     public function __construct()
     {
         $this->circuits = new WeakMap();

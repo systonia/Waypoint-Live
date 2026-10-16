@@ -11,7 +11,7 @@ use TypeError;
 use WeakMap;
 
 /**
- * A component's template: a PHP file rendered with `$this` as the component, private members included.
+ * @internal A component's template: a PHP file rendered with `$this` as the component, private members included.
  * `<?= $this->count ?>` is HTML-escaped, `<?php echo $html ?>` stays raw; control flow works as in any view.
  * `<app-row name="<?= $city ?>" key="<?= $city ?>"></app-row>` places a child component: a value that is a
  * single `<?= expr ?>` passes the value itself (an int, an object, a closure), anything else passes a string.

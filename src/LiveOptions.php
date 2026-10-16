@@ -2,7 +2,9 @@
 
 namespace Waypoint\Live;
 
-/** Configure with `$app->configure(function (LiveOptions $live) { ... })`. */
+/**
+ * Live's options, set with `$app->configure(fn (LiveOptions $live) => $live->editor = '...')`.
+ */
 class LiveOptions
 {
     /**

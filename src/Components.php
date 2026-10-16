@@ -28,7 +28,14 @@ final class Components
     /** @var array<string, string> selector => hash of the template file it was compiled from */
     private array $hashes = [];
 
-    /** @param class-string ...$classes Classes with a #[Component] attribute */
+    /**
+     * Adds components, at boot: a class without #[Component], a selector that is taken or no custom element name,
+     * or a missing template is refused at once.
+     *
+     * @param class-string ...$classes Classes with a #[Component] attribute
+     * @throws \InvalidArgumentException for a class that cannot be a component
+     * @throws \LogicException once a page has used the components
+     */
     public function add(string ...$classes): self
     {
         if ($this->compiled !== null) {
@@ -53,7 +60,11 @@ final class Components
         return $this;
     }
 
-    /** @return array{class-string, Template}|null */
+    /**
+     * @internal
+     *
+     * @return array{class-string, Template}|null
+     */
     public function get(string $selector): ?array
     {
         return $this->compile()[$selector] ?? null;
@@ -69,7 +80,7 @@ final class Components
         return $this->found;
     }
 
-    /** @return list<string> */
+    /** @return list<string> The selectors of every component added so far */
     public function selectors(): array
     {
         return array_keys($this->found);

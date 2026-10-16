@@ -15,6 +15,11 @@ final class Connection
 {
     private ?string $navigation = null;
 
+    /**
+     * @internal The circuit creates it
+     *
+     * @param Request $request The request the WebSocket came in with
+     */
     public function __construct(public private(set) Request $request)
     {
     }

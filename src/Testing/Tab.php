@@ -85,7 +85,11 @@ final class Tab
         return $this;
     }
 
-    /** @param array<string, mixed> $inputs As the page passes them */
+    /**
+     * Places a top-level component as the browser does when it connects, and renders it.
+     *
+     * @param array<string, mixed> $inputs As the page passes them
+     */
     public function mount(string $selector, array $inputs = []): Mounted
     {
         $id = 'c' . $this->mounted++;
@@ -117,6 +121,7 @@ final class Tab
         return $this;
     }
 
+    /** That the last navigate() of an action or timer in this tab asked for $url. */
     public function assertNavigatedTo(string $url): self
     {
         Assert::assertSame($url, $this->navigation, 'The tab was sent elsewhere');

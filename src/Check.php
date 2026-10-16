@@ -23,7 +23,7 @@ final class Check
     public const DIRECTORY = 'var/live-check';
 
     /**
-     * What PHPStan reads in a generated file: $template runs with `$this` as a $class, private members included,
+     * @internal What PHPStan reads in a generated file: $template runs with `$this` as a $class, private members included,
      * as a template does.
      *
      * @template T of object

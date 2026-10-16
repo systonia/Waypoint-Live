@@ -7,7 +7,7 @@ use ReflectionMethod;
 use Tenma\Lsp\{Provider, Tokens};
 
 /**
- * Live in the editor, through `tenma lsp` (composer.json names it under extra.tenma.lsp): `$this` in a
+ * @internal Live in the editor, through `tenma lsp` (composer.json names it under extra.tenma.lsp): `$this` in a
  * template is its component, `data-on-click="` completes the component's public methods, `<app-` the
  * selectors, a child tag its #[Input] properties. F12 leads from a tag to its class and from an action
  * to its method. Problems shows what Problems finds while the template is typed, and directives get their
