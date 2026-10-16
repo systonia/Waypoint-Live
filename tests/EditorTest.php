@@ -147,6 +147,24 @@ final class EditorTest extends TestCase
         $this->assertSame([], $this->editor()->tokens(self::FIXTURES . '/view.php', $text));
     }
 
+    /** @return list<string> line:column text type, operators left out */
+    private function colours(string $text): array
+    {
+        $tokens = array_map(
+            static fn (array $t) => "{$t['line']}:{$t['column']} " . substr(explode("\n", $text)[$t['line'] - 1], $t['column'], $t['length']) . " {$t['type']}",
+            $this->editor()->tokens(self::FIXTURES . '/Shelf.Template.php', $text),
+        );
+        return array_values(array_filter($tokens, static fn (string $t) => !str_ends_with($t, ' operator')));
+    }
+
+    public function testCodeGetsItsColours(): void
+    {
+        $this->assertSame(
+            ['1:0 @code keyword', '2:0 @endcode keyword', '1:6 $a variable', '1:11 count function', '1:17 $this variable', '1:24 books property'],
+            $this->colours("@code \$a = count(\$this->books);\n@endcode"),
+        );
+    }
+
     public function testProblemsWithPhp(): void
     {
         $this->assertSame(

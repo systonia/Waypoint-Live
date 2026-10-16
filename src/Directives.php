@@ -10,6 +10,7 @@ namespace Waypoint\Live;
  *     {{/* comment *∕}}     nothing: a PHP block comment in braces (∕ stands for /, which would end this docblock)
  *     @if (cond) @elseif (cond) @else @endif
  *     @foreach (expr) @endforeach
+ *     @code … @endcode      PHP, as <?php … ?>; the body is PHP only, no directives in it
  *     @@                    a literal @
  *
  * A directive starts a line or follows whitespace or `>`: `info@example.com` and `@media` stay text. Every
@@ -23,7 +24,7 @@ final class Directives
     private const WITHOUT = ['else', 'endif', 'endforeach'];
 
     /**
-     * @var list<array{kind: 'echo'|'comment'|'directive'|'broken'|'at', start: int, end: int, name?: string, expression?: array{int, int}}>
+     * @var list<array{kind: 'echo'|'comment'|'directive'|'broken'|'at'|'code', start: int, end: int, name?: string, expression?: array{int, int}}>
      *     What was found, by byte offsets: `expression` is the PHP inside, `name` the directive's; a broken
      *     directive (no parentheses) stays as written
      */
@@ -66,6 +67,7 @@ final class Directives
         $newline = ($this->source[$found['end']] ?? '') === "\n" ? ', "\n"' : '';
         return match ($found['kind']) {
             'echo' => "<?= $expression$newline ?>",
+            'code' => "<?php $expression ?>",
             'comment' => '<?php /*' . str_replace('*/', '* /', $expression) . '*/ ?>',
             'at' => '@',
             'broken' => substr($this->source, $found['start'], $found['end'] - $found['start']),
@@ -133,6 +135,13 @@ final class Directives
         }
         $name = $m[1];
         $end = $start + strlen($m[0]);
+        if ($name === 'code') {
+            return $this->code($start, $end, $to);
+        }
+        if ($name === 'endcode') {
+            $this->problem($start, '@endcode without @code');
+            return $end;
+        }
         if (in_array($name, self::WITHOUT, true)) {
             $this->found[] = ['kind' => 'directive', 'start' => $start, 'end' => $end, 'name' => $name];
             return $end;
@@ -163,6 +172,32 @@ final class Directives
         }
         $this->found[] = ['kind' => 'directive', 'start' => $start, 'end' => $close + 1, 'name' => $name, 'expression' => [$open + 1, $close]];
         return $close + 1;
+    }
+
+    // The body is PHP: it ends at the first @endcode outside its strings and comments
+    private function code(int $start, int $from, int $to): int
+    {
+        $tokens = token_get_all('<?php ' . substr($this->source, $from, $to - $from));
+        $at = $from - 6;
+        foreach ($tokens as $i => $token) {
+            if (is_array($token) && $token[0] === T_CLOSE_TAG) {
+                $this->problem($start, '@code has a ?>, which would end the PHP early: use @endcode to end the code');
+                return $to;
+            }
+            $next = $tokens[$i + 1] ?? null;
+            if ($token === '@' && is_array($next) && $next[0] === T_STRING && $next[1] === 'endcode') {
+                if (trim(substr($this->source, $from, $at - $from)) === '') {
+                    $this->problem($start, '@code is empty', 'warning');
+                }
+                $this->found[] = ['kind' => 'code', 'start' => $start, 'end' => $at + 8, 'name' => 'code', 'expression' => [$from, $at]];
+                return $at + 8;
+            }
+            $at += strlen(is_array($token) ? $token[1] : $token);
+        }
+        $this->problem($start, self::opensComment(substr($this->source, $from, $to - $from))
+            ? '@code has a /* without */: it would comment out the template up to the next */'
+            : '@code has no @endcode');
+        return $to;
     }
 
     /**

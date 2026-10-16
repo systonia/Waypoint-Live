@@ -115,6 +115,50 @@ final class DirectivesTest extends TestCase
         $this->assertSame([], self::problems('<b @on="x">@id @lento</b>'));
     }
 
+    public function testCodeBecomesPhpOnTheSameLines(): void
+    {
+        $source = "@code\n    \$a = '@endcode ?>' . \"}}\";\n    if (\$a) { \$b = 1; } /* @endcode */\n@endcode\n<p>{{ \$a }}</p>\n@code \$c = {{ 1 }} @endcode";
+        $php = (new Directives($source))->compile();
+        $this->assertSame(
+            "<?php \n    \$a = '@endcode ?>' . \"}}\";\n    if (\$a) { \$b = 1; } /* @endcode */\n ?>\n<p><?=  \$a  ?></p>\n<?php  \$c = {{ 1 }}  ?>",
+            $php,
+        );
+        $this->assertSame([], self::problems($source));
+        // The body is PHP, not template: no directive inside it
+        $this->assertSame("<?php  if (\$a) { @if }  ?>", (new Directives('@code if ($a) { @if } @endcode'))->compile());
+    }
+
+    public function testATemplateSetsAVariableInCodeAndAnErrorInItKeepsItsLine(): void
+    {
+        $file = (string) tempnam(sys_get_temp_dir(), 'live');
+        file_put_contents($file, "@code\n    \$title = strtoupper(\$this->books[0]);\n@endcode\n<h1>{{ \$title }}</h1>\n@code\n\n    \$this->open ?: throw new \\RuntimeException('closed');\n@endcode");
+        $template = new Template($file);
+        $render = static fn (Shelf $shelf) => $template->render($shelf, static fn () => '');
+        $this->assertSame("<h1>DUNE</h1>\n", $render(new Shelf()));
+        $shelf = new Shelf();
+        $shelf->open = false;
+        try {
+            $render($shelf);
+            $this->fail('No error');
+        } catch (\RuntimeException $e) {
+            $this->assertSame([$file, 7], Template::origin($e));
+        } finally {
+            unlink($file);
+        }
+    }
+
+    public function testMistakesInCode(): void
+    {
+        $this->assertSame(['2: @code has no @endcode'], self::problems("<p>\n@code \$a = 1;\n"));
+        $this->assertSame(['1: @endcode without @code'], self::problems('<p> @endcode'));
+        $this->assertSame(['1: @code has a ?>, which would end the PHP early: use @endcode to end the code'], self::problems('@code $a = 1; ?> <p> @endcode'));
+        $this->assertSame(['1: @code has a /* without */: it would comment out the template up to the next */'], self::problems('@code $a = 1; /* @endcode'));
+        $this->assertSame('1: @code is empty', self::problems("@code \n @endcode")[0]);
+        $this->assertSame('warning', (new Directives('@code @endcode'))->problems[0]['severity']);
+        // A string may hold @endcode
+        $this->assertSame(['1: @code has no @endcode'], self::problems("@code \$a = '@endcode';"));
+    }
+
     public function testATemplateWithProblemsDoesNotCompile(): void
     {
         $this->expectException(InvalidArgumentException::class);
