@@ -156,6 +156,8 @@ Outside a component, for example in a controller or a queue worker of the same p
 
 A broadcast renders every tab of every user, whether it shows the room or not; tabs whose HTML did not change send nothing. It is meant for changes that are rare compared to the number of open tabs.
 
+Each tab renders with its own connection's request values (its locale, its request id in the log), not with those of the request that called `changed()` ([The connection](connection.md#connection)).
+
 ## Several workers
 
 Each Tenma worker has its own memory, its own tabs and its own instance of every app-wide service. Under a Tenma with `Tenma::publish()`, `changed()` goes out through it: every worker renders its tabs, and with `tenma --pubsub redis://host` every process on that Redis too. A worker subscribes to these broadcasts when its first tab connects, so a script that boots the app without a server (a CLI task, a test) ends as usual.

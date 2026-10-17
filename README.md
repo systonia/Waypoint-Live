@@ -235,6 +235,8 @@ the page's first render it is an error.
 `$request->jwt` is what the middlewares found when the WebSocket connected, not refreshed until a reconnect.
 Once its `exp` has passed, the next mount or call closes the connection and the browser reconnects; a
 component that must notice a logout or a revoked token right away asks its source again on every action.
+Every render of a tab, from a message, a timer or a broadcast, runs with the `FiberLocal` values of its
+connection's request: the locale and the request id are the tab's own.
 
 ```php
 #[Inject]

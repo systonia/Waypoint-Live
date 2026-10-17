@@ -22,6 +22,8 @@ A browser's WebSocket sends the site's cookies but no `Authorization` header. So
 
 During the page's first render, before any WebSocket exists, `request` is the page's own request, so the HTML a user without JavaScript sees is rendered for the right user too.
 
+What the request's middlewares keep per request in a `Waypoint\Support\FiberLocal` (the locale of an i18n plugin, the request id in the log) stays the connection's in every render of the tab: after a message from the browser, in an `#[Every]` timer, and in a render that a broadcast from another user's request started. After a reconnect it is the new connection's.
+
 ## Guards on components and actions
 
 The guards of a page's route **do not protect the components on that page**. The WebSocket route `/_live` is one route for all components, and any browser that reaches it can mount any listed component with any inputs, whatever page it pretends to be on. A component guards itself, with the attributes a route takes:

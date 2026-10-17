@@ -46,7 +46,7 @@ final class CircuitTest extends TestCase
 
     private function plugin(bool $dev = false): LivePlugin
     {
-        $live = new LivePlugin([Counter::class, ItemList::class, Item::class, BasketButton::class, BasketBadge::class, Fragile::class, Uploader::class, Visitor::class, Bouncer::class, Chat::class, Shop::class, Ticker::class, \Waypoint\Live\Tests\Fixtures\Gauge::class, \Waypoint\Live\Tests\Fixtures\Palette::class, \Waypoint\Live\Tests\Fixtures\Order::class]);
+        $live = new LivePlugin([Counter::class, ItemList::class, Item::class, BasketButton::class, BasketBadge::class, Fragile::class, Uploader::class, Visitor::class, Bouncer::class, Chat::class, Shop::class, Ticker::class, \Waypoint\Live\Tests\Fixtures\Gauge::class, \Waypoint\Live\Tests\Fixtures\Palette::class, \Waypoint\Live\Tests\Fixtures\Order::class, \Waypoint\Live\Tests\Fixtures\Greeting::class]);
         $container = new Container();
         $container->set(new Label('fine'));
         $container->set(new Room());
@@ -746,6 +746,27 @@ final class CircuitTest extends TestCase
         $this->assertSame([], $this->reported);
         $this->assertSame(1, $circuit->byId('c0')?->component->count);
         $this->assertNull($circuit->byId('c1'));
+    }
+
+    public function testEveryRenderOfATabRunsWithItsConnectionsRequestValues(): void
+    {
+        $locale = \Waypoint\Live\Tests\Fixtures\Greeting::locale();
+        // The connection's request set its locale; the circuit keeps it
+        $locale->set('de');
+        $circuit = $this->circuit();
+        $circuit->handle($this->message(['t' => 'mount', 'id' => 'c0', 'c' => 'test-greeting', 'p' => []]));
+        $this->assertStringContainsString('<p>de</p>', $this->sent[0]['html']);
+
+        // A timer, a broadcast from another request and a message all run with the tab's values
+        $locale->set('en');
+        ($this->timers[0][1])();
+        $circuit->changed(cause: 'a broadcast');
+        $circuit->handle($this->message(['t' => 'call', 'id' => 'c0', 'm' => 'look', 'a' => []]));
+        $this->assertSame(['de', 'de'], $circuit->byId('c0')?->component->seen);
+        $this->assertCount(1, $this->sent);
+        // And the other request has its own back
+        $this->assertSame('en', $locale->get());
+        $locale->set(null);
     }
 
     public function testNavigatingWhileThePageRendersIsAnError(): void

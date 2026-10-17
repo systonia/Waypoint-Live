@@ -11,6 +11,7 @@ use Throwable;
 use WeakMap;
 use Waypoint\Attributes\Inject;
 use Waypoint\Http\{Request, UploadedFile};
+use Waypoint\Support\FiberLocal;
 
 /**
  * @internal One browser tab's components on the server, for as long as its WebSocket is open. Messages from the browser
@@ -44,6 +45,9 @@ final class Circuit
 
     /** @var Closure(): void */
     private Closure $close;
+
+    /** @var Closure(): void Sets the FiberLocal values of the connection's request (the locale, the request itself) again */
+    private Closure $context;
 
     /** @var WeakMap<object, int> Objects bound to calls, numbered in the order they first were */
     private WeakMap $objects;
@@ -82,6 +86,7 @@ final class Circuit
     {
         $this->close = $close ?? static function (): void {
         };
+        $this->context = FiberLocal::capture();
         $this->services = $live->scope();
         $this->objects = new WeakMap();
         $this->connection = new Connection($request ?? Request::fromParts('GET', '/'));
@@ -126,6 +131,29 @@ final class Circuit
     }
 
     public function handle(string $message): void
+    {
+        $this->within(fn () => $this->receive($message));
+    }
+
+    /**
+     * Runs $work with the FiberLocal values the connection's request had, wherever it runs: in a timer or in the
+     * request that sent a broadcast. The values of the code around it are set again afterwards.
+     *
+     * ponytail: a value that was not set around it stays set afterwards; FiberLocal::capture() only restores the
+     * values it found, which is enough while every request sets the same ones
+     */
+    private function within(Closure $work): void
+    {
+        $around = FiberLocal::capture();
+        ($this->context)();
+        try {
+            $work();
+        } finally {
+            $around();
+        }
+    }
+
+    private function receive(string $message): void
     {
         $msg = json_decode($message, true);
         $id = is_array($msg) ? ($msg['id'] ?? null) : null;
@@ -320,6 +348,8 @@ final class Circuit
      */
     public function reattach(Closure $send, ?Request $request = null, ?Closure $close = null): void
     {
+        // Called by the new connection, with its request's values
+        $this->context = FiberLocal::capture();
         $this->send = $send;
         $this->close = $close ?? $this->close;
         $this->broadcast->connect($this);
@@ -561,7 +591,7 @@ final class Circuit
     {
         foreach ((new ReflectionObject($node->component))->getMethods() as $method) {
             foreach ($method->getAttributes(Every::class) as $attribute) {
-                $node->timers[] = ($this->every)($attribute->newInstance()->seconds, function () use ($node, $method): void {
+                $node->timers[] = ($this->every)($attribute->newInstance()->seconds, fn () => $this->within(function () use ($node, $method): void {
                     $this->cause = '#[Every] ' . $method->getName();
                     $this->started = hrtime(true);
                     // As an action: a failure shows on the component, what changed before it still renders
@@ -574,7 +604,7 @@ final class Circuit
                     }
                     $this->trace();
                     $this->navigate();
-                });
+                }));
             }
         }
     }
@@ -591,6 +621,16 @@ final class Circuit
      * @internal
      */
     public function changed(bool $onlyIfChanged = true, ?string $cause = null): void
+    {
+        // From outside an action or a timer (a broadcast, a reconnect): with the tab's own request values
+        if ($cause !== null) {
+            $this->within(fn () => $this->renderAll($onlyIfChanged, $cause));
+        } else {
+            $this->renderAll($onlyIfChanged, null);
+        }
+    }
+
+    private function renderAll(bool $onlyIfChanged, ?string $cause): void
     {
         $this->cause = $cause ?? $this->cause;
         // From outside an action or a timer (a broadcast, a reconnect): a trace of its own
