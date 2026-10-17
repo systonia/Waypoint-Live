@@ -388,10 +388,10 @@ final class Circuit
             $args[$i] = self::files($arg, $files);
         }
         $bound = $node->calls[$method] ?? $node->lastCalls[$method] ?? null;
+        $before = [];
         if ($bound !== null) {
             // A call a render bound: its arguments first, then what the event brings
             [$method, $before] = $bound;
-            $args = [...$before, ...$args];
         } elseif (str_contains($method, '~')) {
             // Bound by a render that is gone: the browser has the newer one or gets it, the click was on what changed
             return;
@@ -403,6 +403,21 @@ final class Circuit
         if (!$reflection->isPublic() || $reflection->isStatic()) {
             throw new InvalidArgumentException("'$method' is not a public method");
         }
+        // What the browser sends, as the parameter it fills takes it: a value that does not fit is refused like a
+        // call on what changed, without a TypeError for the component
+        $parameters = $reflection->getParameters();
+        foreach ($args as $i => $arg) {
+            $parameter = $parameters[count($before) + $i] ?? null;
+            if ($parameter === null) {
+                continue;
+            }
+            [$fits, $args[$i]] = Argument::convert($parameter, $arg);
+            if (!$fits) {
+                $this->live->notice("call \"$method\": refused a value from the browser that " . $node->component::class . "::$method() does not take for \${$parameter->getName()} (" . $parameter->getType() . ')');
+                return;
+            }
+        }
+        $args = [...$before, ...$args];
         try {
             $reflection->invokeArgs($node->component, $args);
         } finally {

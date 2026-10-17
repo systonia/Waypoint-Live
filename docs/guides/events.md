@@ -61,7 +61,7 @@ final class Quantity
 <p>{{ $this->quantity }} {{ $this->gift ? 'wrapped' : 'plain' }}</p>
 ```
 
-Typing `7` calls `set("7")`, which PHP converts to `set(7)` for the `int` parameter (below). Ticking the box calls `wrap(true)`.
+Typing `7` sends `"7"`, which Live converts to `set(7)` for the `int` parameter (below). Ticking the box calls `wrap(true)`.
 
 ### Typing and the order of events
 
@@ -181,15 +181,20 @@ public function save(bool $publish = false): void
 }
 ```
 
-Values are converted to the parameter's type as in a PHP call without `strict_types`:
+The value is converted to the type of the parameter it fills, by the rules `Waypoint\FromArray` follows for a `#[Body]` DTO. A value that does not fit is refused: the method is not called, the component shows no error, and in development the log says why, as for a click on a call that is gone. Nothing is cast:
 
 | Browser sends | Parameter | Method gets |
 |---|---|---|
 | `"7"` | `int $quantity` | `7` |
-| `"abc"` | `int $quantity` | `TypeError`: the component fails |
-| `"false"` | `bool $publish` | `true` (a non-empty string) |
+| `"7.5"`, `"abc"`, `""` | `int $quantity` | refused |
+| `""` | `?int $quantity` | `null` |
+| `"2.5"` | `float $price` | `2.5` |
+| `"false"`, `"off"`, `"0"` | `bool $publish` | `false` |
 | `true` (checkbox) | `bool $gift` | `true` |
+| `"l"` | `Size $size` (a backed enum) | `Size::from('l')`, or refused for a value that is no case |
+| the form's array | `Signup $form` (a `FromArray` DTO) | a `Signup` built from it ([Forms](forms.md#a-dto-for-the-form)) |
+| a string | `array $form` | refused |
 
-Check values in the method as you would any other request input.
+A parameter without a type, or `mixed`, gets the value as it came. Check values in the method as you would any other request input.
 
 See also: [Forms and binding](forms.md), [Security model](security.md), [Testing](testing.md).

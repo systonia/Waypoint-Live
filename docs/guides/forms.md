@@ -98,7 +98,32 @@ $form->submit('form', ['email' => 'anna@example.com', 'topics' => ['events']])
 - The button that submitted the form is in it with its `name` and `value`, as in a classic post: `<button name="as" value="draft">` and `<button name="as" value="public">` tell the method which was pressed.
 - An empty file input is left out; a file input sends an [`UploadedFile`](uploads.md), a list of them with `[]` and `multiple`.
 
-All values are strings (or files). Treat the array like any request body: check every field, and never trust the browser to send only the fields the template has. A forged message can send any array, or no array at all, so the type of the parameter matters: `array $form` refuses a string with a `TypeError`.
+All values are strings (or files). Treat the array like any request body: check every field, and never trust the browser to send only the fields the template has. A forged message can send any array, or no array at all, so the type of the parameter matters: `array $form` refuses a string, and the method is not called ([Events](events.md#one-value-from-the-browser)).
+
+### A DTO for the form
+
+A parameter typed with a class that uses `Waypoint\FromArray` gets the form as that DTO, built as a `#[Body]` DTO of a controller is: `"3"` becomes an `int`, `"l"` a backed enum case, nested arrays nested DTOs. Its validation attributes apply, and nothing throws: `$form->isValid` and `$form->errors` tell what to show.
+
+```php
+final class Signup
+{
+    use FromArray;
+
+    #[Email]
+    public string $email;
+
+    public int $seats = 1;
+}
+
+public function sign(Signup $form): void
+{
+    $this->errors = $form->errors;
+    if ($form->isValid) {
+        $this->signups->add($form->email, $form->seats);
+    }
+}
+```
+
 
 Any validation code works, plain PHP as above or a validator service injected into the component; the component decides how it shows the errors.
 

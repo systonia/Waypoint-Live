@@ -46,7 +46,7 @@ final class CircuitTest extends TestCase
 
     private function plugin(bool $dev = false): LivePlugin
     {
-        $live = new LivePlugin([Counter::class, ItemList::class, Item::class, BasketButton::class, BasketBadge::class, Fragile::class, Uploader::class, Visitor::class, Bouncer::class, Chat::class, Shop::class, Ticker::class, \Waypoint\Live\Tests\Fixtures\Gauge::class, \Waypoint\Live\Tests\Fixtures\Palette::class]);
+        $live = new LivePlugin([Counter::class, ItemList::class, Item::class, BasketButton::class, BasketBadge::class, Fragile::class, Uploader::class, Visitor::class, Bouncer::class, Chat::class, Shop::class, Ticker::class, \Waypoint\Live\Tests\Fixtures\Gauge::class, \Waypoint\Live\Tests\Fixtures\Palette::class, \Waypoint\Live\Tests\Fixtures\Order::class]);
         $container = new Container();
         $container->set(new Label('fine'));
         $container->set(new Room());
@@ -109,12 +109,13 @@ final class CircuitTest extends TestCase
         $circuit->handle($this->message(['t' => 'mount', 'id' => 'c3', 'c' => 'test-counter', 'p' => ['label' => 'x']]));
         $circuit->handle($this->message(['t' => 'mount', 'id' => 'c0', 'c' => 'test-counter', 'p' => []]));
 
-        // Errors only; after a failed call the unchanged component comes again, which clears the error in the browser
-        $this->assertCount(9, array_filter($this->sent, static fn (array $reply) => ($reply['error'] ?? false) === true));
+        // Errors only, but none for a value that does not fit add(int): refused without a call. After a failed call
+        // the unchanged component comes again, which clears the error in the browser
+        $this->assertCount(8, array_filter($this->sent, static fn (array $reply) => ($reply['error'] ?? false) === true));
         foreach ($this->sent as $reply) {
             $this->assertTrue(($reply['error'] ?? false) || $reply['html'] === self::html(3));
         }
-        $this->assertCount(9, $this->reported);
+        $this->assertCount(8, $this->reported);
     }
 
     public function testGarbageIsIgnoredWithoutAReply(): void
@@ -427,11 +428,45 @@ final class CircuitTest extends TestCase
         Circuit::page($this->plugin(), 'test-counter', ['count' => new \stdClass()]);
     }
 
+    public function testValuesFromTheBrowserBecomeTheParametersTypesOrAreRefused(): void
+    {
+        $circuit = $this->circuit();
+        $circuit->handle($this->message(['t' => 'mount', 'id' => 'c0', 'c' => 'test-order', 'p' => []]));
+        $call = fn (string $method, mixed $value) => $circuit->handle($this->message(['t' => 'call', 'id' => 'c0', 'm' => $method, 'a' => [$value]]));
+        // Form text as the type, an empty field as null where null is allowed, a backed enum by its value
+        $call('quantity', '7');
+        $call('quantity', -3);
+        $call('discount', '2.5');
+        $call('discount', '');
+        $call('gift', 'false');
+        $call('gift', true);
+        $call('size', 'l');
+        // Refused: no cast, no TypeError, no error state, no call
+        $call('quantity', '');
+        $call('quantity', '7.5');
+        $call('quantity', 'abc');
+        $call('gift', 'maybe');
+        $call('size', 'xl');
+        $call('sign', 'not a form');
+        // A FromArray DTO from the form's array, its validation on it
+        $call('sign', ['email' => 'nope', 'seats' => '3', 'size' => 'l']);
+
+        $order = $circuit->byId('c0')?->component;
+        $this->assertInstanceOf(\Waypoint\Live\Tests\Fixtures\Order::class, $order);
+        $form = array_pop($order->got);
+        $this->assertSame([7, -3, 2.5, null, false, true, \Waypoint\Live\Tests\Fixtures\Size::Large], $order->got);
+        $this->assertInstanceOf(\Waypoint\Live\Tests\Fixtures\Signup::class, $form);
+        $this->assertSame([3, \Waypoint\Live\Tests\Fixtures\Size::Large], [$form->seats, $form->size]);
+        $this->assertArrayHasKey('email', $form->errors);
+        $this->assertSame([], $this->reported);
+        $this->assertSame([], array_filter($this->sent, static fn (array $reply) => isset($reply['error'])));
+    }
+
     public function testAfterAFailedCallTheNextRenderGoesOutEvenIfItIsTheSame(): void
     {
         $circuit = $this->circuit();
         $circuit->handle($this->message(['t' => 'mount', 'id' => 'c0', 'c' => 'test-counter', 'p' => ['count' => 3]]));
-        $circuit->handle($this->message(['t' => 'call', 'id' => 'c0', 'm' => 'add', 'a' => ['not a number']]));
+        $circuit->handle($this->message(['t' => 'call', 'id' => 'c0', 'm' => 'reset', 'a' => []]));
         $this->sent = [];
         // add(0) changes nothing, but the browser still marks the component as failed: the HTML clears it
         $circuit->handle($this->message(['t' => 'call', 'id' => 'c0', 'm' => 'add', 'a' => [0]]));

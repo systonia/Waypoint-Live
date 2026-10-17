@@ -337,9 +337,11 @@ components start over. It is never in a URL, a cookie or storage.
 - A call takes at most one value from the browser, the one its event brings (the field's value, the form,
   `data-arg`). It fills the first parameter the template does not bind; any further one keeps its default. A
   forged message can send it for a click without `data-arg` too, so that parameter is input like any other.
-- Arguments from the browser are converted to the method's parameter types as in a call without
-  `strict_types`: `"7"` fills an `int`, `"false"` fills a `bool` as `true`. One that can't be converted is an
-  error. Check the values in the method like any other request input.
+- Values from the browser are converted to the method's parameter types by the rules of `Waypoint\FromArray`:
+  `"7"` fills an `int`, `"false"` a `bool` as `false`, `""` a nullable parameter as `null`, `"l"` a backed enum
+  as its case, the form's array a `FromArray` DTO (with its `errors`). Nothing is cast: a value that does not
+  fit (`"7.5"` for an `int`) is refused without calling the method, logged in dev. Check the values in the
+  method like any other request input.
 - Errors go to the log; the browser only gets `{"error": true}`, and the circuit keeps running. A component
   whose render fails gets `data-live-error` and holds back no other component of the tab.
 
