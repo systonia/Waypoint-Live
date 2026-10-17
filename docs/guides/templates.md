@@ -142,6 +142,8 @@ The condition may span lines and contain parentheses and strings: `@if (in_array
 
 A directive starts a line or follows whitespace or `>`. So `shop@example.com`, `@media` in a `<style>` block and attributes like `@click` stay text. Use `@@` where an `@` that should stay text follows a space, as in `@@{{ $tag }}`.
 
+A `{{ }}` or a child tag at the end of a line keeps the line break after it, `\n` or `\r\n` as the file has it, although PHP drops the one after `?>`.
+
 Directives work inside a tag, for attributes that come and go:
 
 ```html

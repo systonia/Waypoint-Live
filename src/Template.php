@@ -281,16 +281,16 @@ final class Template
             return $source;
         }
         $value = '"((?:<\?=.*?\?>|[^"])*)"';
-        $tag = '/<(' . implode('|', array_map(static fn (string $s) => preg_quote($s, '/'), $selectors)) . ')((?:\s+[A-Za-z_][\w.:-]*(?:="(?:<\?=.*?\?>|[^"])*")?)*)\s*(?:\/>|>\s*<\/\1>)(\n?)/s';
+        $tag = '/<(' . implode('|', array_map(static fn (string $s) => preg_quote($s, '/'), $selectors)) . ')((?:\s+[A-Za-z_][\w.:-]*(?:="(?:<\?=.*?\?>|[^"])*")?)*)\s*(?:\/>|>\s*<\/\1>)(\r\n|\n|\r|)/s';
         return (string) preg_replace_callback($tag, static function (array $m) use ($value): string {
             preg_match_all('/([A-Za-z_][\w.:-]*)(?:=' . $value . ')?/s', $m[2], $attributes, PREG_SET_ORDER);
             $inputs = [];
             foreach ($attributes as $attribute) {
                 $inputs[] = var_export($attribute[1], true) . ' => ' . self::value($attribute[2] ?? null);
             }
-            $code = '<?php echo $__child(' . var_export($m[1], true) . ', [' . implode(', ', $inputs) . '])' . ($m[3] !== '' ? ', "\n"' : '') . ';';
+            $code = '<?php echo $__child(' . var_export($m[1], true) . ', [' . implode(', ', $inputs) . '])' . ($m[3] !== '' ? ', ' . json_encode($m[3]) : '') . ';';
             // A tag over several lines keeps them, as blank lines in the PHP: the lines after it stay where they are
-            $code .= str_repeat("\n", max(0, substr_count($m[0], "\n") - strlen($m[3]) - substr_count($code, "\n")));
+            $code .= str_repeat("\n", max(0, substr_count($m[0], "\n") - substr_count($m[3], "\n") - substr_count($code, "\n")));
             // PHP swallows a newline after a closing tag: echo it instead, so the output and the line numbers stay put
             return $code . ' ?>' . $m[3];
         }, $source);
@@ -344,7 +344,7 @@ final class Template
         foreach ($parts as $i => $part) {
             // A {{ }} at the end of a line echoes the newline PHP would swallow (Directives); inside a value the
             // newline stays in the text after it, so the echo of it goes
-            $part = $i % 2 === 1 ? (string) preg_replace('/,\s*"\\\\n"\s*$/', '', (string) $part) : $part;
+            $part = $i % 2 === 1 ? (string) preg_replace('/,\s*"(?:\\\\r\\\\n|\\\\n|\\\\r)"\s*$/', '', (string) $part) : $part;
             $code[] = $i % 2 === 1 ? '(string) (' . $part . ')' : var_export(html_entity_decode((string) $part, ENT_QUOTES | ENT_HTML5), true);
         }
         return implode(' . ', $code);

@@ -79,8 +79,8 @@ final class Directives
         }
         [$from, $to] = $found['expression'] ?? [0, 0];
         $expression = substr($this->source, $from, $to - $from);
-        // PHP swallows the newline after a closing tag: an echo at the end of a line prints it, as text would
-        $newline = ($this->source[$found['end']] ?? '') === "\n" ? ', "\n"' : '';
+        // PHP swallows the newline after a closing tag (\n, \r\n or \r): an echo at the end of a line prints it, as text would
+        $newline = preg_match('/\G(\r\n|\n|\r)/', $this->source, $m, 0, $found['end']) === 1 ? ', ' . json_encode($m[1]) : '';
         return match ($found['kind']) {
             'echo' => "<?= $expression$newline ?>",
             'code' => "<?php $expression ?>",

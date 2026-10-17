@@ -43,6 +43,26 @@ final class DirectivesTest extends TestCase
         $this->assertMatchesRegularExpression("/'name' => '' \\. \\(string\\) \\(\\s*\\\$a\\s*\\) \\. '\n' \\. \\(string\\) \\(\\s*\\\$b\\s*\\)/", $php);
     }
 
+    public function testWindowsLineEndsAfterAnEchoOrAChildTagStay(): void
+    {
+        $render = static function (string $source): string {
+            ob_start();
+            eval(Template::compile($source, ['app-row']));
+            return (string) ob_get_clean();
+        };
+        // PHP swallows a CRLF after a closing tag as it does a LF: the compiler echoes back the one that was there
+        $this->assertSame("<p>\r\na\r\nb\r\n</p>\r\n", $render("<p>\r\n{{ 'a' }}\r\n{{ 'b' }}\r\n</p>\r\n"));
+        $__child = static fn (string $selector, array $inputs): string => "[{$inputs['name']}]";
+        $this->assertSame("[x]\r\n<p>\r\n", (static function () use ($__child): string {
+            ob_start();
+            eval(Template::compile("<app-row name=\"x\"></app-row>\r\n<p>\r\n", ['app-row']));
+            return (string) ob_get_clean();
+        })());
+        // Inside a child's attribute the newline stays in the value
+        $php = Template::compile("<app-row name=\"{{ \$a }}\r\n{{ \$b }}\"></app-row>", ['app-row']);
+        $this->assertMatchesRegularExpression("/'name' => '' \\. \\(string\\) \\(\\s*\\\$a\\s*\\) \\. '\r\n' \\. \\(string\\) \\(\\s*\\\$b\\s*\\)/", $php);
+    }
+
     public function testTextAndPhpStayAsTheyAre(): void
     {
         foreach ([
