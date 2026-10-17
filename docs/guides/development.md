@@ -24,6 +24,9 @@ In production none of this happens: the browser only learns that a component fai
 Once the app has started, and after every saved template, Live checks every component and its template for mistakes that would otherwise only show at a click or a render:
 
 - a `data-on-*` that names a method the component lacks, or one that is private or static (`Did you mean add()?`),
+- a `data-on-click="add"` without `data-arg` for a method with a required parameter, which a click can never fill (a warning),
+- a `data-on-<event>` for an event `live.js` does not listen to, such as `data-on-keyup` (a warning),
+- PHP that would end the worker when the template renders: a `use` or a named function in `@code`, a `break` outside a loop ([Templates](templates.md#code)),
 - an attribute of a child tag that is no input of the child, with the inputs it has,
 - a component's tag that would stay as it is (single quotes, content inside),
 - PHP that does not parse, a `//` comment inside `<?= ?>` or `{{ }}`,

@@ -15,7 +15,7 @@ An attribute `data-on-<event>="method"` in a template wires a browser event to a
 | `data-on-change` | a field's `change` event | the value; `true`/`false` for a checkbox; an `UploadedFile` (or a list with `multiple`) for a file input |
 | `data-on-submit` | a form's submit | the form as an array ([Forms](forms.md)) |
 
-`data-on-click` and `data-on-submit` call `preventDefault()`: a link with `data-on-click` does not follow its `href`, and a form does not post to the server the classic way. Other event names do nothing in the browser.
+`data-on-click` and `data-on-submit` call `preventDefault()`: a link with `data-on-click` does not follow its `href`, and a form does not post to the server the classic way. Other event names do nothing in the browser, and the checks warn about them.
 
 A quantity field, a checkbox and a button:
 
@@ -82,6 +82,8 @@ public function show(string $filter): void
     $this->filter = $filter;
 }
 ```
+
+A click without `data-arg` brings no value, so a method with a required parameter gets a warning from the checks: give it a `data-arg`, or bind the argument (below).
 
 `data-arg` is good for a fixed value written into the template. For anything that comes from the data (an ID, an object) a bound call is the better choice.
 

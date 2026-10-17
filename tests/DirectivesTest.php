@@ -88,7 +88,7 @@ final class DirectivesTest extends TestCase
             return "<$selector>";
         });
         $this->assertSame(
-            "<ul>\n    <li data-on-click=\"pick\">Dune</li>\n    <li data-on-click=\"pick\">&lt;Emma&gt;</li>\n</ul>\n<test-item>\n<hr>\nmail@example.com @if\n",
+            "<ul>\n    <li data-on-click=\"pick\" data-arg=\"Dune\">Dune</li>\n    <li data-on-click=\"pick\" data-arg=\"&lt;Emma&gt;\">&lt;Emma&gt;</li>\n</ul>\n<test-item>\n<hr>\nmail@example.com @if\n",
             $html,
         );
         // A lone {{ }} in a child's attribute passes the value itself

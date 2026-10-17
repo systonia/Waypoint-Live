@@ -14,6 +14,9 @@ use ReflectionClass;
  */
 final class Problems
 {
+    /** The events live.js listens to */
+    private const EVENTS = ['click', 'input', 'change', 'submit'];
+
     /**
      * @param class-string $class The component the template belongs to
      * @param array<string, class-string> $components selector => class, every component of the app
@@ -119,7 +122,7 @@ final class Problems
 
     /**
      * @param class-string $class
-     * @return list<array{line: int, message: string, severity: 'error'}>
+     * @return list<array{line: int, message: string, severity: 'error'|'warning'}>
      */
     private static function actions(string $php, string $class): array
     {
@@ -133,7 +136,7 @@ final class Problems
         }
         $problems = [];
         // What the compiler wires up: markup in a comment names no method
-        foreach (Template::wiring($php) as ['event' => $event, 'value' => $value, 'line' => $line]) {
+        foreach (Template::wiring($php) as ['event' => $event, 'value' => $value, 'line' => $line, 'offset' => $offset]) {
             $attribute = "data-on-$event=\"$value\"";
             // A method, or a call with arguments the server binds: remove($item)
             $name = preg_match('/^([A-Za-z_]\w*)(?:\(.*\))?$/s', $value, $m) === 1 ? $m[1] : null;
@@ -147,9 +150,28 @@ final class Problems
             };
             if ($message !== null) {
                 $problems[] = ['line' => $line, 'message' => $message, 'severity' => 'error'];
+                continue;
+            }
+            $warning = match (true) {
+                !in_array($event, self::EVENTS, true) => "$attribute: live.js listens to " . implode(', ', array_map(static fn (string $e) => "data-on-$e", self::EVENTS)) . ' only, so this one never fires',
+                $event === 'click' && $name === $value && $reflection->getMethod($name)->getNumberOfRequiredParameters() > 0 && !self::hasArg($php, $offset)
+                    => "$attribute: $short::$name() needs an argument and a click brings none: add data-arg=\"...\", or bind it: $name(\$value)",
+                default => null,
+            };
+            if ($warning !== null) {
+                $problems[] = ['line' => $line, 'message' => $warning, 'severity' => 'warning'];
             }
         }
         return $problems;
+    }
+
+    /** Whether the start tag around $offset has a data-arg, PHP and quoted values inside it skipped. */
+    private static function hasArg(string $php, int $offset): bool
+    {
+        $start = strrpos(substr($php, 0, $offset), '<');
+        return $start !== false
+            && preg_match('/\G<[A-Za-z][\w:-]*(?:<\?.*?\?>|"[^"]*"|\'[^\']*\'|[^\'">])*>?/s', $php, $tag, 0, $start) === 1
+            && preg_match('/\sdata-arg\b/', $tag[0]) === 1;
     }
 
     /**

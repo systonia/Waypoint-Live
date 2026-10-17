@@ -304,7 +304,7 @@ final class Template
      * @internal The `data-on-*` attributes of a template's PHP (Directives::compile()) outside comments, with their
      * lines: what the browser can reach, for the checks.
      *
-     * @return list<array{event: string, value: string, line: int}>
+     * @return list<array{event: string, value: string, line: int, offset: int}>
      */
     public static function wiring(string $php): array
     {
@@ -320,23 +320,27 @@ final class Template
      *
      * @param list<string>|null $actions
      * @param-out list<string> $actions
-     * @param list<array{event: string, value: string, line: int}> $wired
-     * @param-out list<array{event: string, value: string, line: int}> $wired Every data-on-* attribute, by line
+     * @param list<array{event: string, value: string, line: int, offset: int}> $wired
+     * @param-out list<array{event: string, value: string, line: int, offset: int}> $wired Every data-on-* attribute, by line and offset in $source
      */
     private static function calls(string $source, ?array &$actions, array &$wired = []): string
     {
         $actions ??= [];
         $code = '';
         $comment = false;
+        $at = 0;
         foreach (token_get_all($source) as $token) {
             $text = is_array($token) ? $token[1] : $token;
             if (!is_array($token) || $token[0] !== T_INLINE_HTML) {
                 $code .= $text;
+                $at += strlen($text);
                 continue;
             }
             // An HTML comment may span PHP tags: whether one is open carries over to the next piece of HTML
             foreach ((array) preg_split('/(<!--|-->)/', $text, -1, PREG_SPLIT_DELIM_CAPTURE) as $part) {
                 $part = (string) $part;
+                $from = $at;
+                $at += strlen($part);
                 if ($comment || $part === '<!--') {
                     $comment = $part !== '-->';
                     $code .= $part;
@@ -344,7 +348,7 @@ final class Template
                 }
                 preg_match_all('/\bdata-on-([a-z]+)="([^"]*)"/', $part, $found, PREG_OFFSET_CAPTURE | PREG_SET_ORDER);
                 foreach ($found as [[, $offset], [$event], [$value]]) {
-                    $wired[] = ['event' => $event, 'value' => $value, 'line' => substr_count($code, "\n") + substr_count($part, "\n", 0, $offset) + 1];
+                    $wired[] = ['event' => $event, 'value' => $value, 'line' => substr_count($code, "\n") + substr_count($part, "\n", 0, $offset) + 1, 'offset' => $from + $offset];
                     if (preg_match('/^[A-Za-z_]\w*$/', $value) === 1) {
                         $actions[] = $value;
                     }

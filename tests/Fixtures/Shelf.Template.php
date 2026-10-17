@@ -3,7 +3,7 @@
 @if ($this->open)
 <ul>
 @foreach ($this->books as $book)
-    <li data-on-click="pick">{{ $book }}</li>
+    <li data-on-click="pick" data-arg="{{ $book }}">{{ $book }}</li>
 @endforeach
 </ul>
 @elseif (count($this->books) > 0)

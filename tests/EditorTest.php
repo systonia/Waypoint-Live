@@ -109,6 +109,11 @@ final class EditorTest extends TestCase
         ], $this->problems(self::FIXTURES . '/Counter.Template.php', "<p>\n<b data-on-click=\"ad\">\n<b data-on-click=\"tick\">\n<b data-on-click=\"add(\"1\")\">\n<b data-on-click=\"ad(1)\"><b data-on-click=\"add(2)\">"));
         // The arguments are PHP: checked like an echo, at their line
         $this->assertSame(["2 error: syntax error, unexpected token \"]\""], $this->problems(self::FIXTURES . '/Counter.Template.php', "<p>\n<b data-on-click=\"add(1 +)\">"));
+        // Warnings: a click that brings no value to a method that needs one, an event live.js never sends
+        $this->assertSame([
+            '1 warning: data-on-click="add": Counter::add() needs an argument and a click brings none: add data-arg="...", or bind it: add($value)',
+            '3 warning: data-on-keyup="add": live.js listens to data-on-click, data-on-input, data-on-change, data-on-submit only, so this one never fires',
+        ], $this->problems(self::FIXTURES . '/Counter.Template.php', "<b data-on-click=\"add\">\n<b data-on-click=\"add\" title=\"<?= \$a > 1 ?>\" data-arg=\"{{ \$n }}\"><b data-on-input=\"add\"><b data-on-click=\"add(1)\">\n<input data-on-keyup=\"add\">"));
         // Markup that was commented out names nothing, as for the compiler
         $this->assertSame(
             ['4 error: data-on-click="ad": Counter has no method ad(). Did you mean add()?'],
