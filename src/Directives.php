@@ -335,9 +335,12 @@ final class Directives
             }
             return;
         }
-        preg_match_all('/\sclass\s*=\s*("[^"]*"|\'[^\']*\')/i', $tag, $attributes, PREG_OFFSET_CAPTURE);
-        if (count($attributes[0]) > 1) {
+        $classes = array_values(array_filter(self::attributes($tag), static fn (array $attribute) => strtolower($attribute[0]) === 'class'));
+        if (count($classes) > 1) {
             $this->problem($items[$first]['start'], "<$name> has two class attributes: the browser takes the first only");
+        }
+        if ($classes !== [] && $classes[0][3] === '') {
+            $this->problem($items[$first]['start'], "<$name class=...> needs quotes for @class.: class=\"...\"");
         }
         $conditions = [];
         $seen = [];
@@ -355,15 +358,55 @@ final class Directives
             $this->found[$i] = ['code' => '', 'from' => $item['start'] - strspn(strrev(substr($this->source, 0, $item['start'])), " \t")] + $item;
         }
         $call = '\\' . __NAMESPACE__ . '\\classes([' . implode(', ', $conditions) . '])';
-        if ($attributes[1] === []) {
+        if ($classes === []) {
             $this->found[$first]['code'] = " class=\"<?= $call ?>\"";
             return;
         }
         // Before the closing quote, with a space only when the value had one and the call adds something
-        [$value, $offset] = $attributes[1][0];
-        $quote = $at + $offset + strlen($value) - 1;
-        $empty = trim(substr($this->source, $at + $offset + 1, strlen($value) - 2)) === '';
-        $this->found[] = ['kind' => 'insert', 'start' => $quote, 'end' => $quote, 'code' => '<?= ' . ($empty ? $call : "rtrim(' ' . $call)") . ' ?>'];
+        [, $from, $to] = $classes[0];
+        $empty = trim(substr($this->source, $at + $from, $to - $from)) === '';
+        $this->found[] = ['kind' => 'insert', 'start' => $at + $to, 'end' => $at + $to, 'code' => '<?= ' . ($empty ? $call : "rtrim(' ' . $call)") . ' ?>'];
+    }
+
+    /**
+     * The attributes of a start tag in one pass, as HTML reads them: name, where the value starts and ends (the
+     * offsets in $tag, quotes outside) and its quote, '' for none.
+     *
+     * @return list<array{string, int, int, string}>
+     */
+    private static function attributes(string $tag): array
+    {
+        $attributes = [];
+        $i = strcspn($tag, " \t\r\n/>");
+        $length = strlen($tag);
+        while ($i < $length) {
+            $i += strspn($tag, " \t\r\n/", $i);
+            $size = strcspn($tag, " \t\r\n/>=", $i);
+            if ($size === 0) {
+                break;
+            }
+            $name = substr($tag, $i, $size);
+            $i += $size;
+            $i += strspn($tag, " \t\r\n", $i);
+            if (($tag[$i] ?? '') !== '=') {
+                $attributes[] = [$name, $i, $i, ''];
+                continue;
+            }
+            $i++;
+            $i += strspn($tag, " \t\r\n", $i);
+            $quote = $tag[$i] ?? '';
+            if ($quote === '"' || $quote === "'") {
+                $close = strpos($tag, $quote, $i + 1);
+                $close = $close === false ? $length : $close;
+                $attributes[] = [$name, $i + 1, $close, $quote];
+                $i = $close + 1;
+                continue;
+            }
+            $size = strcspn($tag, " \t\r\n>", $i);
+            $attributes[] = [$name, $i, $i + $size, ''];
+            $i += $size;
+        }
+        return $attributes;
     }
 
     /**

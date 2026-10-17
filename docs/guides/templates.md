@@ -267,7 +267,7 @@ renders `<li class="row late">` while `$order->late` is true and the order is no
 - The class name runs to the first `=` outside square brackets, so every Tailwind class works: `@class.md:w-1/2="..."`, `@class.hover:underline`, `@class.bg-[#ff0000]`, `@class.data-[state=open]:block`, `@class.[&>*]:p-4`, `@class.!font-bold`. The browser never sees `@class.`: the compiler removes it.
 - Tailwind reads the template file as text, so it finds these names and generates their CSS as for any other class.
 - In a tag over several lines, an error in a condition is reported at the line of the `class` attribute, or of the first `@class.` when there is none.
-- `@class.` outside a start tag, without a name or without a value keeps the template from compiling. So does `@class.` on a child component's tag: a child takes inputs, so put the class on an element inside its template or pass an input. Two `class` attributes in a tag with `@class.` are an error, the same class twice a warning.
+- `@class.` outside a start tag, without a name or without a value keeps the template from compiling. So does `@class.` on a child component's tag: a child takes inputs, so put the class on an element inside its template or pass an input. Two `class` attributes in a tag with `@class.` are an error, and so is a `class` value without quotes (`class=row`); the same class twice is a warning. The tag's attributes are read as the browser reads them, so `class=` inside another attribute's value (`title="class='x'"`) is no class attribute.
 
 ### classes()
 

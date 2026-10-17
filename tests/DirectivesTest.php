@@ -332,6 +332,10 @@ final class DirectivesTest extends TestCase
         $this->assertSame(['1: @class. needs a class name and a condition: @class.late="$order->late"'], self::problems('<p @class.="$a">'));
         $this->assertSame(['1: <p> has two class attributes: the browser takes the first only'], self::problems('<p class="a" class="b" @class.c="$c">'));
         $this->assertSame(['1: @class.c comes twice in <p>'], self::problems('<p @class.c="$c" @class.c="$d">'));
+        // The attributes as the browser reads them: class= inside another value is none, an unquoted one needs quotes
+        $this->assertSame('<p title=" class=\'t\'" class="<?= \\Waypoint\\Live\\classes([\'b\' => (1)]) ?>">', (new Directives('<p title=" class=\'t\'" @class.b="1">'))->compile());
+        $this->assertSame(['1: <p class=...> needs quotes for @class.: class="..."'], self::problems('<p class=a @class.b="$b">'));
+        $this->assertSame(['1: <p> has two class attributes: the browser takes the first only'], self::problems('<p class="a" CLASS=b @class.c="$c">'));
         $child = new Directives('<app-row @class.c="$c"></app-row>', ['app-row']);
         $this->assertSame(['1: <app-row @class.c>: a child component takes inputs, not classes. Put the class on an element inside its template, or pass an input'], array_map(static fn (array $p) => "{$p['line']}: {$p['message']}", $child->problems));
         // A > in a {{ }}, a directive or PHP ends no tag
