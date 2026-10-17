@@ -297,15 +297,31 @@ final class Template
     }
 
     /**
+     * @internal The `data-on-*` attributes of a template's PHP (Directives::compile()) outside comments, with their
+     * lines: what the browser can reach, for the checks.
+     *
+     * @return list<array{event: string, value: string, line: int}>
+     */
+    public static function wiring(string $php): array
+    {
+        $wired = [];
+        self::calls($php, $actions, $wired);
+        return $wired;
+    }
+
+    /**
      * `data-on-click="remove($item)"` becomes `data-on-click="<?= $__action('remove', [$item]) ?>"`, and
      * `data-on-click="save"` names an action, in the HTML only. Markup in a comment does neither: a button that
      * was commented out leaves its method out of reach and its arguments unevaluated.
      *
-     * @param list<string> $actions
+     * @param list<string>|null $actions
      * @param-out list<string> $actions
+     * @param list<array{event: string, value: string, line: int}> $wired
+     * @param-out list<array{event: string, value: string, line: int}> $wired Every data-on-* attribute, by line
      */
-    private static function calls(string $source, array &$actions): string
+    private static function calls(string $source, ?array &$actions, array &$wired = []): string
     {
+        $actions ??= [];
         $code = '';
         $comment = false;
         foreach (token_get_all($source) as $token) {
@@ -322,8 +338,13 @@ final class Template
                     $code .= $part;
                     continue;
                 }
-                preg_match_all('/\bdata-on-[a-z]+="([A-Za-z_]\w*)"/', $part, $named);
-                $actions = [...$actions, ...$named[1]];
+                preg_match_all('/\bdata-on-([a-z]+)="([^"]*)"/', $part, $found, PREG_OFFSET_CAPTURE | PREG_SET_ORDER);
+                foreach ($found as [[, $offset], [$event], [$value]]) {
+                    $wired[] = ['event' => $event, 'value' => $value, 'line' => substr_count($code, "\n") + substr_count($part, "\n", 0, $offset) + 1];
+                    if (preg_match('/^[A-Za-z_]\w*$/', $value) === 1) {
+                        $actions[] = $value;
+                    }
+                }
                 $code .= preg_replace('/\bdata-on-([a-z]+)="([A-Za-z_]\w*)\(([^"]*)\)"/', 'data-on-$1="<?= $__action(\'$2\', [$3]) ?>"', $part);
             }
         }

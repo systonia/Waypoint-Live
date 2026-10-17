@@ -29,7 +29,7 @@ final class Problems
         $problems = [
             ...$directives->problems,
             ...($comments !== [] || in_array('error', array_column($directives->problems, 'severity'), true) ? $comments : self::syntax($source, array_keys($components), $class)),
-            ...self::actions($source, $class),
+            ...self::actions($php, $class),
             ...self::children($php, $components),
         ];
         usort($problems, static fn (array $a, array $b) => $a['line'] <=> $b['line']);
@@ -121,7 +121,7 @@ final class Problems
      * @param class-string $class
      * @return list<array{line: int, message: string, severity: 'error'}>
      */
-    private static function actions(string $source, string $class): array
+    private static function actions(string $php, string $class): array
     {
         $reflection = new ReflectionClass($class);
         $short = $reflection->getShortName();
@@ -132,8 +132,9 @@ final class Problems
             }
         }
         $problems = [];
-        preg_match_all('/\bdata-on-([a-z]+)="([^"]*)"/', $source, $found, PREG_OFFSET_CAPTURE | PREG_SET_ORDER);
-        foreach ($found as [[$attribute, $offset], , [$value]]) {
+        // What the compiler wires up: markup in a comment names no method
+        foreach (Template::wiring($php) as ['event' => $event, 'value' => $value, 'line' => $line]) {
+            $attribute = "data-on-$event=\"$value\"";
             // A method, or a call with arguments the server binds: remove($item)
             $name = preg_match('/^([A-Za-z_]\w*)(?:\(.*\))?$/s', $value, $m) === 1 ? $m[1] : null;
             $message = match (true) {
@@ -145,7 +146,7 @@ final class Problems
                 default => null,
             };
             if ($message !== null) {
-                $problems[] = ['line' => self::line($source, $offset), 'message' => $message, 'severity' => 'error'];
+                $problems[] = ['line' => $line, 'message' => $message, 'severity' => 'error'];
             }
         }
         return $problems;

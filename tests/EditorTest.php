@@ -109,6 +109,11 @@ final class EditorTest extends TestCase
         ], $this->problems(self::FIXTURES . '/Counter.Template.php', "<p>\n<b data-on-click=\"ad\">\n<b data-on-click=\"tick\">\n<b data-on-click=\"add(\"1\")\">\n<b data-on-click=\"ad(1)\"><b data-on-click=\"add(2)\">"));
         // The arguments are PHP: checked like an echo, at their line
         $this->assertSame(["2 error: syntax error, unexpected token \"]\""], $this->problems(self::FIXTURES . '/Counter.Template.php', "<p>\n<b data-on-click=\"add(1 +)\">"));
+        // Markup that was commented out names nothing, as for the compiler
+        $this->assertSame(
+            ['4 error: data-on-click="ad": Counter has no method ad(). Did you mean add()?'],
+            $this->problems(self::FIXTURES . '/Counter.Template.php', "{{/* <button data-on-click=\"nuke\">old</button> */}}\n<!-- <button data-on-click=\"gone\">\n -->\n<b data-on-click=\"ad\">"),
+        );
     }
 
     public function testProblemsInChildTags(): void
