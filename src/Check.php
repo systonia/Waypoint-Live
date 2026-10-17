@@ -19,9 +19,6 @@ use RuntimeException;
  */
 final class Check
 {
-    /** Where the generated files go, below the project: in .gitignore */
-    public const DIRECTORY = 'var/live-check';
-
     /**
      * @internal What PHPStan reads in a generated file: $template runs with `$this` as a $class, private members included,
      * as a template does.
@@ -60,7 +57,8 @@ final class Check
         }
         $components = Components::scan($root);
         $broken = array_column(array_filter($components->check(), static fn (array $p) => $p['severity'] === 'error'), 'file', 'file');
-        $directory = "$root/" . self::DIRECTORY;
+        // In the system's temp directory, one per project: nothing to ignore in the project
+        $directory = sys_get_temp_dir() . '/live-check-' . md5((string) realpath($root));
         array_map('unlink', glob("$directory/*.php") ?: []);
         @mkdir($directory, 0777, true);
         $templates = [];

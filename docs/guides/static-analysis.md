@@ -45,7 +45,7 @@ So the command fails a CI step as it is. An optional argument names the project'
 ### Configuration
 
 - PHPStan runs with the project's `phpstan.neon` (or `phpstan.neon.dist`): its level, its extensions, its bootstrap files. Without one, it runs at level 6.
-- The generated files go to `var/live-check/`, one per component. Add `var/` to `.gitignore`.
+- The generated files go to the system's temp directory (`live-check-<hash of the project path>`), one per component, never into the project.
 - Types in templates come from the component's properties and methods. A property's `@var list<Task>` lets PHPStan check what a loop over it does with each `$task`.
 
 ### In the editor while saving

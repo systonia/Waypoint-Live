@@ -417,7 +417,7 @@ live-check: 1 errors, 0 warnings
 ```
 
 It needs `phpstan/phpstan` as a dev dependency and uses the project's `phpstan.neon` (level, extensions), or
-level 6 without one. The generated files go to `var/live-check/` (add `var/` to `.gitignore`); the exit code
+level 6 without one. The generated files go to the system's temp directory, never into the project; the exit code
 fails a CI step. In a `tenma.dev.php` hook, PHPStan's findings reach the editor as you save:
 
 ```php

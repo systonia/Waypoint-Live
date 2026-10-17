@@ -22,16 +22,6 @@ template's line. In a `tenma.dev.php` hook, publish() shows PHPStan's findings i
         run: fn () => Waypoint\Live\Check::publish(__DIR__),
     ),
 
-## Constants
-
-### DIRECTORY
-
-```php
-public const DIRECTORY = 'var/live-check';
-```
-
-Where the generated files go, below the project: in .gitignore
-
 ## Methods
 
 ### problems()
