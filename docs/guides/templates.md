@@ -70,15 +70,11 @@ The template:
 With `name="Green <b>tea</b>"`, `stock="3"` and a two-line description whose second line is `<script>x</script>`, it renders:
 
 ```html
-<h3>Green &lt;b&gt;tea&lt;/b&gt;</h3>
-    <em>Only 3 left</em>
-<p>Fresh.</p><p>&lt;script&gt;x&lt;/script&gt;</p>
-    <ul>
-            <li>1/2 @tea</li>
-            <li>2/2 @organic</li>
-        </ul>
-<p>Questions? shop@example.com</p>
+<h3>Green &lt;b&gt;tea&lt;/b&gt;</h3><em>Only 3 left</em><p>Fresh.</p><p>&lt;script&gt;x&lt;/script&gt;</p>
+<ul><li>1/2 @tea</li><li>2/2 @organic</li></ul><p>Questions? shop@example.com</p>
 ```
+
+The directives' lines leave no whitespace behind ([Whitespace](#whitespace)); the line break after `{{ $this->description() }}` stays, as text does.
 
 ## Printing values
 
@@ -138,6 +134,10 @@ What differs in a component's template:
 - Markup in a comment, `{{/* */}}` or `<!-- -->`, makes no method callable: a `data-on-click` inside one is ignored ([Events and actions](events.md#what-the-browser-can-call)).
 - A value the template needs is best a property or method of the component: typed, and seen by the editor and PHPStan without help. `@code` is for small helpers of the markup: `@code $order = $this->order() @endcode`.
 - [`classes()`](https://github.com/systonia/Waypoint/blob/main/docs/reference/Waypoint/index.md#classes) builds a `class` value in PHP, `classes('row', ['late' => $order->late])`, in every template without an import. It is `Waypoint\classes()`; `Waypoint\Live\classes()` stays as another name for it.
+
+### Whitespace
+
+A directive on its own line leaves no whitespace behind: its indentation, the line break after it, blank lines between directives and the whitespace at the start and end of a block's content print nothing, so a template can be indented freely. This holds for `@if`, `@elseif`, `@else`, `@endif`, `@foreach`, `@endforeach`, `@code`, `@endcode` and `@use`. Whitespace without a line break stays as written, so `Hello @if ($name) {{ $name }} @endif` keeps its spaces. Around `{{ }}` and plain text, whitespace goes only where it touches a directive.
 
 ## Class names in a template
 

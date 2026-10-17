@@ -27,5 +27,15 @@ if (!interface_exists(\Tenma\Lsp\Provider::class)) {
         {
             public function imports(string $file, string $text): array;
         }
+
+        interface Variables
+        {
+            public function variables(string $file, string $text): array;
+        }
+
+        interface Elements
+        {
+            public function elements(string $class): array;
+        }
         PHP);
 }

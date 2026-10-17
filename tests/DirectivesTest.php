@@ -21,7 +21,7 @@ final class DirectivesTest extends TestCase
         $source = "@foreach (\$this->items as \$item)\n  {{ \$item }}\n  @if (\$a === ')')\n  {{ \$html }}\n  @elseif (\$b)\n  @else\n  @endif\n@endforeach\n{{/* one\ntwo */}} {{ /* three */ }}";
         $php = (new Directives($source))->compile();
         $this->assertSame(
-            "<?php foreach (\$this->items as \$item): ?>\n  <?=  \$item , \"\\n\" ?>\n  <?php if (\$a === ')'): ?>\n  <?=  \$html , \"\\n\" ?>\n  <?php elseif (\$b): ?>\n  <?php else: ?>\n  <?php endif ?>\n<?php endforeach ?>\n<?php /* one\ntwo */ ?> <?php /* three */ ?>",
+            "<?php foreach (\$this->items as \$item): \n  ?><?=  \$item  ?><?php\n   if (\$a === ')'): \n  ?><?=  \$html  ?><?php\n   elseif (\$b): \n  ?><?php else: \n  ?><?php endif \n?><?php endforeach \n?><?php /* one\ntwo */ ?> <?php /* three */ ?>",
             $php,
         );
         $this->assertSame(substr_count($source, "\n"), substr_count($php, "\n"));
@@ -88,7 +88,7 @@ final class DirectivesTest extends TestCase
             return "<$selector>";
         });
         $this->assertSame(
-            "<ul>\n    <li data-on-click=\"pick\" data-arg=\"Dune\">Dune</li>\n    <li data-on-click=\"pick\" data-arg=\"&lt;Emma&gt;\">&lt;Emma&gt;</li>\n</ul>\n<test-item>\n<hr>\nmail@example.com @if\n",
+            "<ul><li data-on-click=\"pick\" data-arg=\"Dune\">Dune</li><li data-on-click=\"pick\" data-arg=\"&lt;Emma&gt;\">&lt;Emma&gt;</li></ul><test-item>\n<hr>\nmail@example.com @if\n",
             $html,
         );
         // A lone {{ }} in a child's attribute passes the value itself
@@ -140,7 +140,7 @@ final class DirectivesTest extends TestCase
         $source = "@code\n    \$a = '@endcode ?>' . \"}}\";\n    if (\$a) { \$b = 1; } /* @endcode */\n@endcode\n<p>{{ \$a }}</p>\n@code \$c = {{ 1 }} @endcode";
         $php = (new Directives($source))->compile();
         $this->assertSame(
-            "<?php \n    \$a = '@endcode ?>' . \"}}\";\n    if (\$a) { \$b = 1; } /* @endcode */\n ?>\n<p><?=  \$a  ?></p>\n<?php  \$c = {{ 1 }}  ?>",
+            "<?php \n    \$a = '@endcode ?>' . \"}}\";\n    if (\$a) { \$b = 1; } /* @endcode */\n \n?><p><?=  \$a  ?></p><?php\n  \$c = {{ 1 }}  ?>",
             $php,
         );
         $this->assertSame([], self::problems($source));
@@ -154,7 +154,7 @@ final class DirectivesTest extends TestCase
         file_put_contents($file, "@code\n    \$title = strtoupper(\$this->books[0]);\n@endcode\n<h1>{{ \$title }}</h1>\n@code\n\n    \$this->open ?: throw new \\RuntimeException('closed');\n@endcode");
         $template = new Template($file);
         $render = static fn (Shelf $shelf) => $template->render($shelf, static fn () => '');
-        $this->assertSame("<h1>DUNE</h1>\n", $render(new Shelf()));
+        $this->assertSame('<h1>DUNE</h1>', $render(new Shelf()));
         $shelf = new Shelf();
         $shelf->open = false;
         try {
@@ -200,7 +200,7 @@ final class DirectivesTest extends TestCase
     {
         $source = "@use (Waypoint\\Live\\Tests\\Fixtures\\Sub\\Phase as Markup)\n@use (\\Waypoint\\Live\\Html)\n<p>{{ Markup::Closed->name }} {{ new Html('<b>') }}</p>";
         $directives = new Directives($source);
-        $this->assertSame("<?php ?>\n<?php ?>\n<p><?=  Markup::Closed->name  ?> <?=  new Html('<b>')  ?></p>", $directives->compile());
+        $this->assertSame("<?php \n?><?php \n?><p><?=  Markup::Closed->name  ?> <?=  new Html('<b>')  ?></p>", $directives->compile());
         $this->assertSame(['Markup' => 'Waypoint\\Live\\Tests\\Fixtures\\Sub\\Phase', 'Html' => 'Waypoint\\Live\\Html'], $directives->uses);
         // The template's alias wins over the class file's Html as Markup
         $header = Template::header(Board::class, $directives->uses);
