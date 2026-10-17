@@ -6,23 +6,28 @@ order: 90
 
 A file input with `data-on-change`, or a form with `data-on-submit` that contains one, sends its files over the WebSocket. The method gets each file as a `Waypoint\Http\UploadedFile`, the same class a controller gets for a classic upload.
 
-## A photo upload
+## Product pictures
+
+The bakery's product pictures live in `public/products`. A back-office component to upload new ones:
 
 ```php
 <?php
-// src/AlbumUpload.php
+// src/Components/ProductPhotos.php
 
-namespace App;
+namespace Bakery\Components;
 
-use Waypoint\Attributes\Inject;
+use Bakery\Services\Pictures;
+use Waypoint\Attributes\{Authenticated, Inject};
 use Waypoint\Http\UploadedFile;
 use Waypoint\Live\Component;
 
+/** New pictures for the shop, in the back office. */
 #[Component]
-final class AlbumUpload
+#[Authenticated]
+final class ProductPhotos
 {
     #[Inject]
-    private Media $media;
+    private Pictures $pictures;
 
     private ?string $preview = null;
 
@@ -37,7 +42,7 @@ final class AlbumUpload
         $this->preview = $file === null ? null : "$file->name ($file->size bytes)";
     }
 
-    /** @param array{title: string, photos?: list<UploadedFile>} $form */
+    /** @param array{product: string, photos?: list<UploadedFile>} $form */
     public function save(array $form): void
     {
         $this->error = null;
@@ -46,7 +51,7 @@ final class AlbumUpload
                 $this->error = "$photo->name is no PNG or JPEG up to 5 MB";
                 continue;
             }
-            $path = $this->media->pathFor($photo);
+            $path = $this->pictures->pathFor($photo);
             $photo->moveTo($path);
             $this->saved[] = basename($path);
         }
@@ -55,13 +60,13 @@ final class AlbumUpload
 ```
 
 ```html
-<!-- src/AlbumUpload.Template.php -->
+<!-- src/Components/ProductPhotos.Template.php -->
 <input type="file" accept="image/*" data-on-change="pick">
 @if ($this->preview !== null)
     <p>Picked {{ $this->preview }}</p>
 @endif
 <form data-on-submit="save">
-    <input name="title" required>
+    <input name="product" required>
     <input type="file" name="photos[]" accept="image/png,image/jpeg" multiple>
     <button>Upload</button>
 </form>
@@ -71,19 +76,20 @@ final class AlbumUpload
 <p>{{ count($this->saved) }} saved</p>
 ```
 
-`Media` picks a name of its own for every file:
+`Pictures` picks a name of its own for every file:
 
 ```php
 <?php
-// src/Media.php
+// src/Services/Pictures.php
 
-namespace App;
+namespace Bakery\Services;
 
 use Waypoint\Http\UploadedFile;
 
-final class Media
+/** Where the product pictures go: public/products, under names of our own. */
+final class Pictures
 {
-    public string $directory = '/srv/shop/var/uploads';
+    public string $directory = __DIR__ . '/../../public/products';
 
     /** A name of our own: never the browser's name as a path. */
     public function pathFor(UploadedFile $file): string
@@ -112,7 +118,7 @@ An `UploadedFile` has `name`, `type` and `size`, `contents()` for the bytes, and
 
 ## Handle files with care
 
-- **Name and type come from the browser**, as with any upload. Never use the name as a path; Live already strips directories from it, but a name of your own (as `Media` does) is the safe choice. Check the content before trusting the type, for example with `getimagesizefromstring($file->contents())` for an image.
+- **Name and type come from the browser**, as with any upload. Never use the name as a path; Live already strips directories from it, but a name of your own (as `Pictures` does) is the safe choice. Check the content before trusting the type, for example with `getimagesizefromstring($file->contents())` for an image.
 - **Move it, don't keep it.** The file's content is in memory. An `UploadedFile` kept in a component's property stays in memory for the life of the tab; store the file and keep its path or ID.
 - **Check the size** in the method if the app has a limit below the one of the connection (below).
 
@@ -133,9 +139,9 @@ For files larger than that, a classic upload to a controller route remains the b
 [`Mounted::upload()`](../reference/Waypoint/Live/Testing/Mounted.md#upload) picks a file in a `data-on-change` file input:
 
 ```php
-$upload = Tab::for($app)->mount('app-album-upload');
-$upload->upload('input[type=file]', 'cat.png', $bytes, 'image/png')
-    ->assertSee('Picked cat.png');
+$photos = $this->staffTab(self::OWNER)->mount('app-product-photos');
+$photos->upload('input[type=file]', 'pretzel.png', $bytes, 'image/png')
+    ->assertSee('Picked pretzel.png');
 ```
 
 See also: [Forms and binding](forms.md), [Deployment and limits](deployment.md#limits).

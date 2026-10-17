@@ -10,37 +10,57 @@ component calls services directly; there is no API route and no `fetch()` in bet
 **Documentation:** [docs/](docs/index.md): a first component end to end, [guides](docs/guides/index.md) for every
 part of Live, and the [reference](docs/reference/index.md) of every public class.
 
+The examples come from [Sonnenkorn](https://github.com/systonia/Waypoint-Bakery), a made-up bakery whose cart,
+checkout and order board are live components. Its add button, shortened from `src/Components/AddToCart.php`:
+
 ```php
-// src/Counter.php
 #[Component]
-final class Counter
+final class AddToCart
 {
     #[Input]
-    public int $count = 0;
+    public int $product = 0;
 
-    public function increment(): void
+    #[Inject]
+    private Cart $cart;
+
+    #[Inject]
+    private Products $products;
+
+    private ?string $notice = null;
+
+    public function add(): void
     {
-        $this->count++;
+        $product = $this->products->byId($this->product);
+        if ($product === null) {
+            return;
+        }
+        $this->notice = $this->cart->add($product) ? null : 'That is all we have left.';
     }
 }
 ```
 
-```php
-<!-- src/Counter.Template.php: $this is the component, {{ }} escapes -->
-<button data-on-click="increment">{{ $this->count }}</button>
+```html
+<!-- src/Components/AddToCart.Template.php: $this is the component, {{ }} escapes -->
+<button data-on-click="add">Add to cart</button>
+@if ($this->cart->quantity($this->product) > 0)
+    <span>{{ $this->cart->quantity($this->product) }} in your cart</span>
+@endif
+@if ($this->notice !== null)
+    <span role="status">{{ $this->notice }}</span>
+@endif
 ```
 
 ```php
-$app->plugin(new LivePlugin([Counter::class]));   // only listed components can be created
+$app->plugin(new LivePlugin([AddToCart::class, CartBadge::class]));   // only listed components can be created
 ```
 
-```php
-<app-counter count="3"></app-counter>                     <!-- in a view -->
-<?= $this->waypointJsTag() ?><?= $this->pluginAssetTags() ?>   <!-- in the layout -->
+```html
+<app-add-to-cart product="{{ $product->id }}"></app-add-to-cart>   <!-- in a view -->
+{{ $this->waypointJsTag() }}{{ $this->pluginAssetTags() }}       <!-- in the layout -->
 ```
 
-The selector is `app-` and the class name in kebab case (`CitySearch` is `<app-city-search>`), the template
-`Counter.Template.php` next to the class. Both can be given, the template path relative to the class's file:
+The selector is `app-` and the class name in kebab case (`CartBadge` is `<app-cart-badge>`), the template
+`AddToCart.Template.php` next to the class. Both can be given, the template path relative to the class's file:
 
 ```php
 #[Component(
@@ -51,8 +71,8 @@ The selector is `app-` and the class name in kebab case (`CitySearch` is `<app-c
 
 ## How it works
 
-1. The page's tags (or `$this->live('app-counter', ['count' => 3])`) create the component, set its `#[Input]`
-   properties and render the template into the page, wrapped in its selector: `<app-counter data-live data-inputs="{...}">`. Without JavaScript the page
+1. The page's tags (or `$this->live('app-add-to-cart', ['product' => 3])`) create the component, set its `#[Input]`
+   properties and render the template into the page, wrapped in its selector: `<app-add-to-cart data-live data-inputs="{...}">`. Without JavaScript the page
    stays as rendered.
 2. `live.js` opens a WebSocket to `/_live`, a normal Waypoint route: the app's middlewares and guards run, and
    the connection is refused unless its `Origin` is this site.
@@ -62,22 +82,24 @@ The selector is `app-` and the class name in kebab case (`CitySearch` is `<app-c
 5. `data-on-click="method"` (with an optional `data-arg`), `data-on-input` (the field's value, debounced),
    `data-on-change` (value, `checked` for a checkbox, the file for a file input) and `data-on-submit` (the form
    as an object, files included) call the
-   component's method. `data-on-click="remove($item)"` passes arguments of any type, objects included: they
+   component's method. `data-on-click="remove($line->product)"` passes arguments of any type, objects included: they
    stay on the server, the browser only gets an ID for the call. What the event brings comes after them, so
-   `data-on-input="rename($item)"` calls `rename($item, $value)`. Use `'` for strings inside the attribute. A call keeps its ID
+   the stock page's `data-on-change="set($product)"` calls `set($product, $value)`. Use `'` for strings inside the attribute. A call keeps its ID
    across renders; an enum case or an object of a `readonly` class keeps it even when the render builds it again. After each call the template renders again, and the client patches the new HTML in
    place. The focused field keeps what is being typed.
 6. `#[Every(1.0)]` on a method runs it on a timer and pushes a render. Timers stop when the tab closes.
+7. `Broadcast::changed()` renders every open tab, on every worker: the bakery's order board shows a new order
+   the moment the checkout places it.
 
 ## Templates
 
-A template is a PHP file rendered with `$this` as the component, private properties included. Unlike in a
+A template is a PHP file rendered with `$this` as the component, private properties included. As in a
 Waypoint view, `<?= $expr ?>` is HTML-escaped; `<?php echo $html ?>` stays raw for HTML you built yourself.
 `<?php foreach (...): ?>` and `<?php if (...): ?>` work as in any view. Templates are compiled once when the
 plugin starts.
 
 `$this` is the component at runtime without any declaration, and in the editor too through `tenma lsp`
-(see In the editor). Without it, a first line `<?php /** @var \App\Counter $this */ ?>` tells the IDE.
+(see In the editor). Without it, a first line `<?php /** @var \Bakery\Components\AddToCart $this */ ?>` tells the IDE.
 
 `<?= $value ?>` escapes every value except a `Waypoint\Html`, which carries markup that was built safely
 (another template's output, say) and is printed as it is.
@@ -88,39 +110,45 @@ Templates also take directives, mixed with plain PHP as you like. The syntax is 
 views ([the syntax](https://github.com/systonia/Waypoint/blob/main/docs/guides/views.md#the-syntax)); a template
 adds child tags and `data-on-*`, and leaves `@model`, `@section` and `@yield` to views:
 
+After the bakery's `src/Components/OrderBoard.Template.php`, shortened:
+
 ```
-{{/* every product, or a note */}}
-@foreach ($this->products as $product)
-    <li data-key="{{ $product->id }}">
-        {{ $product->name }}
-        @if ($product->stock === 0)
-            <em>sold out</em>
-        @elseif ($product->stock < 5)
-            <em>few left</em>
-        @else
-            {{ $this->badge }}
-        @endif
-    </li>
+{{/* one column per status, one card per order */}}
+@foreach ($this->columns() as [$status, $orders])
+    <section data-key="{{ $status->value }}">
+        <h2>
+            {{ $status->label($this->i18n) }}
+        </h2>
+        @foreach ($orders as $order)
+            <article data-key="{{ $order->code }}">
+                <p class="font-medium">{{ $order->customerName }}</p>
+                @if ($order->status->next() !== null)
+                    <button data-on-click="advance($order)">→ {{ $order->status->next()->label($this->i18n) }}</button>
+                @else
+                    <em>waits for the customer</em>
+                @endif
+            </article>
+        @endforeach
+    </section>
 @endforeach
-<app-cart-row key="{{ $row->id }}" pick="{{ $this->pick(...) }}"></app-cart-row>
 ```
 
 - `{{ expr }}` prints escaped, as `<?= ?>`; a lone `{{ expr }}` in a child tag's attribute passes the value itself.
-  A value of type `Waypoint\Html` prints as it is (`$this->badge` above is one): whether markup is raw
+  A value of type `Waypoint\Html` prints as it is: whether markup is raw
   depends on the value, never on how the template prints it. `{{/* */}}` is a comment.
 - `@if (...)`, `@elseif (...)`, `@else`, `@endif`, `@foreach (...)`, `@endforeach`. `@@` prints an `@`.
-- A directive starts a line or follows whitespace, `>` or `}}`, so `info@example.com`, `@media` in CSS and
+- A directive starts a line or follows whitespace, `>` or `}}`, so `hello@sonnenkorn.test`, `@media` in CSS and
   `@click` stay text. Inside `<?php ?>` nothing is a directive.
 - `@code ... @endcode` holds PHP, as `<?php ... ?>`: `@code $order = $this->order() @endcode`. Neither may
   declare anything (`use`, `namespace`, `declare`, a named function or class) or hold a `break` outside a loop,
   a `yield` outside a function or an assignment to `$this`: PHP would refuse those with a fatal error at the
   first render, so the template does not compile.
 - A template resolves class names as its component's class file does: same namespace, same `use` statements.
-  `@use (App\Ordering\OrderStatus)` or `@use (App\Ordering\Pickup as Slot)` adds one for the template.
-- `<li class="row" @class.late="$order->late">` adds `late` to the class while the condition holds; the name
+  `@use (Bakery\Models\OrderStatus)` or `@use (Bakery\Services\Format as F)` adds one for the template.
+- `<li class="step" @class.current="$step === $order->status">` adds `current` to the class while the condition holds; the name
   runs to the first `=` outside `[ ]`, so Tailwind classes like `md:w-1/2` work. The attribute's own classes
   go through the same `classes()`, so each class comes once.
-  `classes('row', ['late' => $order->late])` builds the same list in PHP, in every template without an import
+  `classes('step', ['current' => $step === $order->status])` builds the same list in PHP, in every template without an import
   (`Waypoint\classes()`; `Waypoint\Live\classes()` is another name for it).
 - A block that does not close, or closes another one, keeps the template from compiling, with its line; so does
   a `/*` without its `*/` inside `{{ }}`, which would comment out the template up to the next `*/`. In the
@@ -130,20 +158,20 @@ adds child tags and `data-on-*`, and leaves `@model`, `@section` and `@yield` to
 
 A template places other components by their tag:
 
-```php
-<!-- CitySearch.Template.php -->
-<?php foreach ($this->cities as $city): ?>
-    <app-city-row key="<?= $city ?>" city="<?= $city ?>" selected="<?= $city === $this->selected ?>" pick="<?= $this->select(...) ?>"></app-city-row>
-<?php endforeach ?>
+```html
+<!-- PickupDesk.Template.php: the shop counter, one row per order that is ready -->
+@foreach ($this->ready() as $order)
+    <app-pickup-row key="{{ $order->code }}" order="{{ $order }}" onHandedOver="{{ $this->handedOver(...) }}" compact></app-pickup-row>
+@endforeach
 ```
 
-- Attributes set the child's `#[Input]` properties. A value that is a single `<?= $expr ?>` passes the value itself
+- Attributes set the child's `#[Input]` properties. A value that is a single `{{ $expr }}` passes the value itself
   (a bool, an object, a closure); anything else passes a string.
 - A child keeps its state as long as the parent's template keeps placing it: by `key`, or without one by its
   position among the tags of that selector. A child that is no longer placed is removed, its timers stop.
 - On a parent render only inputs whose value changed are set again: the child keeps what it
   changed itself.
-- Events go up through a closure input: the child calls `($this->pick)($this->city)`, the parent's method runs.
+- Events go up through a closure input: the child calls `($this->onHandedOver)($this->order)`, the parent's method runs.
   That method doesn't need to be in the parent's template, so the browser can't call it directly.
 - Every change renders the top-level components again, children included.
 
@@ -153,10 +181,17 @@ Services come in through `#[Inject]` as in a controller: one instance for the wh
 service class makes it one instance per circuit, that is per browser tab:
 
 ```php
+/** The cart of one browser tab, shared by the badge in the header, the buttons on the cards, the cart page. */
 #[Scoped]
 final class Cart
 {
-    public array $items = [];
+    #[Inject]
+    private Connection $connection;
+
+    #[Inject]
+    private Carts $carts;
+
+    // lines(), quantity(), add(), set(), count(), clear(): kept in Postgres under the browser's cart cookie
 }
 ```
 
@@ -171,18 +206,20 @@ top-level components render, and those whose HTML changed are sent.
 
 ## Changes for every tab
 
-A tab renders after its own actions and timers. State that tabs share through an app-wide service, such as a chat,
-reaches the other tabs with `Broadcast`: `changed()` renders every connected tab, and each sends the
-components whose HTML changed.
+A tab renders after its own actions and timers. State that tabs share, such as the bakery's orders, reaches the
+other tabs with `Broadcast`: `changed()` renders every connected tab, and each sends the components whose HTML
+changed. From `src/Components/OrderBoard.php`:
 
 ```php
 #[Inject]
-public Broadcast $broadcast;
+private Broadcast $broadcast;
 
-public function say(string $message): void
+/** Bound to the order the board showed: the click moves it from the status it had then, or does nothing. */
+public function advance(Order $order): void
 {
-    $this->room->messages[] = $message;
-    $this->broadcast->changed();
+    if ($this->orders->advance($order->id, $order->status)) {
+        $this->broadcast->changed();
+    }
 }
 ```
 
@@ -190,26 +227,26 @@ Outside a component, `$app->get(Broadcast::class)`. A tab whose connection dropp
 
 With several workers, `changed()` goes out through `Tenma::publish()`: every worker renders its tabs, with
 `tenma --pubsub redis://host` every process on that Redis too. Each worker has its own memory, though: that is
-enough for state in Postgres or Redis. State in memory goes to every worker with its own message, and each worker
+enough for state in Postgres or Redis, as the bakery's orders under `tenma --workers 2`. State in memory goes to every worker with its own message, and each worker
 renders its tabs once it has it, with `changedHere()`:
 
 ```php
 // At startup: runs in every worker
-Tenma::subscribe('chat', function (string $message) use ($room, $broadcast) {
-    $room->messages[] = $message;
+Tenma::subscribe('oven', function (string $news) use ($specials, $broadcast) {
+    $specials->news[] = $news;
     $broadcast->changedHere();
 });
 
 // In the action, instead of changed()
-Tenma::publish('chat', $message);
+Tenma::publish('oven', $news);
 ```
 
 Under a Tenma without `Tenma::publish()`, `changed()` only renders the tabs of the own worker.
 
 ## Components of a plugin
 
-A plugin that brings live components of its own requires `LivePlugin` and adds them in its `boot()`, the way
-waypoint-export-fixed adds its writer:
+A plugin that brings live components of its own requires `LivePlugin` and adds them to the `Components` service,
+which its `boot()` takes as a parameter:
 
 ```php
 public function requires(): array
@@ -217,13 +254,13 @@ public function requires(): array
     return [LivePlugin::class];
 }
 
-public function boot(Container $container): void
+public function boot(Components $components): void
 {
-    $container->get(Components::class)->add(Login::class, Dashboard::class);
+    $components->add(StampCard::class, StampCounter::class);
 }
 ```
 
-Its components name their selector with a prefix of the plugin (`selector: 'home-login'`), so that they never
+Its components name their selector with a prefix of the plugin (`selector: 'stamps-card'`), so that they never
 meet an app's `app-` ones.
 
 ## The connection
@@ -231,7 +268,7 @@ meet an app's `app-` ones.
 A component or a `#[Scoped]` service can inject `Waypoint\Live\Connection`: the request the WebSocket came in
 with, its cookies, and `$request->jwt` as the app's middlewares left it. After a reconnect it is the new
 connection's request. `navigate('/path')` sends the browser to another page of the site once the action is
-done, for example after a login. Only a path of the site is a destination, never another site. It counts even
+done, for example after an order was placed. Only a path of the site is a destination, never another site. It counts even
 if the action throws afterwards, so a check can send a logged-out user to the login and stop the action; during
 the page's first render it is an error.
 
@@ -241,14 +278,17 @@ component that must notice a logout or a revoked token right away asks its sourc
 Every render of a tab, from a message, a timer or a broadcast, runs with the `FiberLocal` values of its
 connection's request: the locale and the request id are the tab's own.
 
+The bakery's checkout ends on the order's page, from `src/Components/Checkout.php`:
+
 ```php
 #[Inject]
-public Connection $connection;
+private Connection $connection;
 
-public function logout(): void
+public function place(CheckoutForm $form): void
 {
-    $this->sessions->end($this->connection->request);
-    $this->connection->navigate('/login');
+    // validate, reserve the stock, empty the cart
+    $this->broadcast->changed();
+    $this->connection->navigate("/orders/{$order->code}/thanks");
 }
 ```
 
@@ -262,10 +302,10 @@ so a reordered list keeps its elements (and the focus and caret inside them); ev
 matched by order. A child component's wrapper is keyed by its ID automatically; any other element gets a key
 with `data-key`:
 
-```php
-<?php foreach ($this->todos as $todo): ?>
-    <li data-key="<?= $todo->id ?>"><?= $todo->title ?></li>
-<?php endforeach ?>
+```html
+@foreach ($this->cart->lines() as $line)
+    <li data-key="{{ $line->product->id }}">{{ $line->product->name('en') }}: {{ $line->quantity }}</li>
+@endforeach
 ```
 
 Unkeyed siblings are matched among those of the same tag, so a message showing up in front of an input
@@ -278,13 +318,13 @@ behind the typing loses nothing. Typing is sent after 150 ms, or right before an
 A file input or a form sends its files along; the method gets a `Waypoint\Http\UploadedFile`, the same class
 a controller gets from `$req->file()`:
 
-```php
+```html
 <input type="file" accept="image/*" data-on-change="pick">
 
 <form data-on-submit="save">
-    <input name="title">
+    <input name="product">
     <input type="file" name="photos[]" multiple>
-    <button>Save</button>
+    <button>Upload</button>
 </form>
 ```
 
@@ -294,11 +334,11 @@ public function pick(?UploadedFile $file): void              // null when the se
     $this->preview = $file?->name;
 }
 
-/** @param array{title: string, photos?: list<UploadedFile>} $form */
+/** @param array{product: string, photos?: list<UploadedFile>} $form */
 public function save(array $form): void
 {
     foreach ($form['photos'] ?? [] as $photo) {
-        $photo->moveTo($this->media->pathFor($photo));     // under Tenma without blocking the worker
+        $photo->moveTo($this->pictures->pathFor($photo));  // under Tenma without blocking the worker
     }
 }
 ```
@@ -383,26 +423,30 @@ proves that the template wires the method up.
 ```php
 use Waypoint\Live\Testing\Tab;
 
-$tab = Tab::for($app);                              // after $app->attach()
-$counter = $tab->mount('app-counter', ['count' => 1]);
+$tab = Tab::for($app, $request);                    // after $app->attach(); $request has the cookies, the JWT
+$button = $tab->mount('app-add-to-cart', ['product' => 3]);
 
-$counter->click('increment')->assertSee('2');      // the element whose data-on-click names the method
-$counter->click('button.reset');                   // or a CSS selector; its data-arg goes along
-$counter->input('#search', 'Ber');                 // data-on-input, without the wait
-$counter->change('#agree', true);
-$counter->submit('form', ['title' => 'Trip']);
-$counter->upload('#photo', 'a.jpg', $bytes, 'image/jpeg');
-$tab->advance(1.0);                                // #[Every] timers run on fake time
+$button->click('add')->assertSee('1 in your cart');   // the element whose data-on-click names the method
+$editor = $tab->mount('app-cart-editor');
+$editor->click('li[data-key="3"] button');           // or a CSS selector: here less($line->product); a data-arg goes along
+// and on the components that have such fields:
+$search->input('input[type=search]', 'pretz');       // data-on-input, without the wait
+$stock->change('input[aria-label="Lye pretzel"]', '55');
+$checkout->submit('form', ['name' => 'Mia', 'email' => 'mia@example.test', 'pickupDate' => $day]);
+$photos->upload('input[type=file]', 'pretzel.png', $bytes, 'image/png');
+$tab->advance(1.0);                                 // #[Every] timers run on fake time
 
-$counter->html();                                  // what the browser has
-$counter->component();                             // the object, for its state
-$counter->find('app-city-row', key: 'Berlin');     // a child, with the same methods
-$tab->assertNavigatedTo('/login');
-Tab::page($app, 'app-counter', ['count' => 1]);    // the HTML before any connection
+$button->html();                                    // what the browser has
+$button->component();                               // the object, for its state
+$desk->find('app-pickup-row', key: 'K7Q2');         // a child, with the same methods
+$tab->assertNavigatedTo("/orders/$code/thanks");
+Tab::page($app, 'app-add-to-cart', ['product' => 3]);   // the HTML before any connection
 ```
 
+The bakery's tests in `tests/Components` drive every one of its components this way.
+
 `$tab->with($fake)` puts a service into the tab before the first `mount()`, in place of the `#[Scoped]` one it is
-or extends (`new class extends Mailer { ... }`); anything else is refused, the app's services come from the app. An
+or extends (`new class extends Wishlist { ... }`); anything else is refused, the app's services come from the app. An
 error that the browser would only see as `data-live-error` fails the test with its own stack. Two tabs of one
 app share its services: a `Broadcast` in one renders the other.
 
@@ -417,7 +461,7 @@ at the template's line:
 
 ```
 $ vendor/bin/waypoint-check
-src/Products.Template.php:4: error: Access to an undefined property Demo\Product::$nmae.
+src/Components/OrderBoard.Template.php:15: error: Access to an undefined property Bakery\Models\Order::$custmerName.
 waypoint-check: 1 errors, 0 warnings
 ```
 
@@ -480,7 +524,7 @@ In production none of this happens: the browser only learns that a component fai
 - Every change renders every top-level component of the tab; fine for small pages, not for big ones.
 - Tags need attributes in double quotes and an empty body (no content projection). In a Waypoint view the
   rendered HTML page is searched for them. An attribute that is no `#[Input]` (`class`, `id`) stays on the
-  tag; an input arrives as a string (`count="3"` still fills an `int`), so a `bool` or an array needs
+  tag; an input arrives as a string (`product="3"` still fills an `int`), so a `bool` or an array needs
   `$this->live()`. A page's inputs travel through the browser and back, so they are JSON values only: an object
   is refused, pass its ID and load it in the component. A child placed by a template gets any value, objects
   and closures included. A tag inside `<script>`, `<textarea>` or an HTML comment is expanded too.

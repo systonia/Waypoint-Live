@@ -1,6 +1,6 @@
 ---
 title: "LivePlugin"
-description: "Register with `$app->plugin(new LivePlugin([Counter::class, Search::class]))`: classes with a #[Component] attribute, and only these can be created; the browser names them by selector."
+description: "Register with `$app->plugin(new LivePlugin([AddToCart::class, CartBadge::class]))`: classes with a #[Component] attribute, and only these can be created; the browser names them by selector."
 order: 100
 generated: true
 ---
@@ -14,10 +14,10 @@ final class LivePlugin extends \Waypoint\Plugin\PluginBase implements \Waypoint\
 Extends `Waypoint\Plugin\PluginBase`  
 Implements `Waypoint\Plugin\ClientAsset`, `Waypoint\Plugin\ResponseHook`, `Waypoint\Plugin\ViewHelper`
 
-Register with `$app->plugin(new LivePlugin([Counter::class, Search::class]))`: classes with a #[Component]
+Register with `$app->plugin(new LivePlugin([AddToCart::class, CartBadge::class]))`: classes with a #[Component]
 attribute, and only these can be created; the browser names them by selector. A plugin brings its own through
 the Components service. Adds
-`$this->live('app-counter', $inputs)` and `<app-counter count="3"></app-counter>` for views, the WebSocket route `/_live` (LiveController) and the client
+`$this->live('app-add-to-cart', $inputs)` and `<app-add-to-cart product="3"></app-add-to-cart>` for views, the WebSocket route `/_live` (LiveController) and the client
 script. Runs under Tenma only.
 
 ## Methods

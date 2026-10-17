@@ -13,9 +13,10 @@ use SplFileInfo;
 use Throwable;
 
 /**
- * The app's live components: those given to LivePlugin, and those another plugin adds in its boot(), as
- * `$container->get(Components::class)->add(Login::class)`. Only these can be created; the browser names them by
- * selector. The templates are compiled on first use, once every selector is known.
+ * The app's live components: those given to LivePlugin, and those another plugin adds in its boot(), which takes
+ * this service as a parameter: `boot(Components $components)`, then `$components->add(StampCard::class)`. Only
+ * these can be created; the browser names them by selector. The templates are compiled on first use, once every
+ * selector is known.
  */
 final class Components
 {

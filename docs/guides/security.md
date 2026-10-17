@@ -16,7 +16,7 @@ A live component runs on the server with the app's full access to its services, 
 
 **Only methods the template names can be called.** The browser can call a public, non-static method only if the component's template names it in a `data-on-*` attribute. Every other public method stays out of reach, and so does one named only in commented-out markup (`<!-- -->`, `{{/* */}}`).
 
-**Bound arguments never leave the server.** A call such as `data-on-click="remove($task)"` reaches the browser only as an ID. The browser can send that ID back, but it cannot change the arguments, and an ID is only valid for the last two renders of that component. A click on an item that is gone since does nothing.
+**Bound arguments never leave the server.** A call such as `data-on-click="remove($line->product)"` on the bakery's cart page reaches the browser only as an ID. The browser can send that ID back, but it cannot change the arguments, and an ID is only valid for the last two renders of that component. A click on an item that is gone since does nothing.
 
 **One value per call.** A call takes at most one value from the browser: the one its event brings. It fills the first parameter the template does not bind; further parameters keep their defaults. A message with more values is refused.
 
@@ -30,13 +30,13 @@ A live component runs on the server with the app's full access to its services, 
 
 ## What every component checks itself
 
-**The user, where an attribute does not fit.** The guards of a page's route do not protect the components on that page: any browser that reaches `/_live` can mount any listed component with any inputs. A component whose data or actions are not for everyone carries `#[Authenticated]`, `#[Role]` or `#[Permissions]` itself. A rule the attributes cannot say, such as whose invoice a user may mark as paid, the component checks itself, from its [`Connection`](connection.md), in its template and in every action.
+**The user, where an attribute does not fit.** The guards of a page's route do not protect the components on that page: any browser that reaches `/_live` can mount any listed component with any inputs. A component whose data or actions are not for everyone carries `#[Authenticated]`, `#[Role]` or `#[Permissions]` itself. A rule the attributes cannot say, such as whose cart a click may change, the component checks itself, from its [`Connection`](connection.md), in its template and in every action. The bakery's order board carries `#[Authenticated]` although its page is behind the back office's sign-in already, and its cart belongs to the browser's cart cookie, read from the connection's request.
 
-**Inputs, like query parameters.** `#[Input]` values set by a page travel through the browser and come back when it connects. A user can change them. Never take an input as proof of who the user is or what they may see: `#[Input] public int $userId` is a hole; the user comes from the connection's request.
+**Inputs, like query parameters.** `#[Input]` values set by a page travel through the browser and come back when it connects. A user can change them. Never take an input as proof of who the user is or what they may see: `#[Input] public int $staffId` is a hole; the user comes from the connection's request. `AddToCart` takes only a product id as its input and looks the product up again, its price and stock included. The order page's `#[Input] public string $code` is the random code from the customer's link, a key that only the customer has, never an id that can be counted through.
 
-**The one value from the browser.** The field's value, the form, `data-arg`: they come from the browser and can be forged, even for a click without `data-arg`. A method like `save(bool $publish = false)` can be called with `$publish` set by anyone who writes their own messages. Check it.
+**The one value from the browser.** The field's value, the form, `data-arg`: they come from the browser and can be forged, even for a click without `data-arg`. A method like `save(bool $express = false)` can be called with `$express` set by anyone who writes their own messages. Check it.
 
-**Types are converted, ranges are not checked.** Values from the browser are converted to the parameter's type by the rules of `Waypoint\FromArray` (`"7"` fills an `int`, `"false"` a `bool` as `false`), and a value that does not fit is refused without a call ([Events](events.md#one-value-from-the-browser)). Validate ranges and formats in the method, or with the rule attributes of a `FromArray` DTO.
+**Types are converted, ranges are not checked.** Values from the browser are converted to the parameter's type by the rules of `Waypoint\FromArray` (`"7"` fills an `int`, `"false"` a `bool` as `false`, `""` the stock editor's `?int $stock` as `null`), and a value that does not fit is refused without a call ([Events](events.md#one-value-from-the-browser)). Validate ranges and formats in the method, or with the rule attributes of a `FromArray` DTO, as the checkout's `CheckoutForm` does.
 
 **Forms.** A form arrives as an array whose keys and values the browser chose. Check every field you use, ignore the rest, and never write the array into a model as it is.
 

@@ -8,13 +8,13 @@ A template is a PHP file rendered with `$this` as the component, private propert
 
 ## A template with everything
 
-A product card. The class:
+A product card, for a shop page that shows one product with a few facts. The bakery prints its cards in a view, `views/Shop/Catalog.php`; as a component the card looks like this. The class:
 
 ```php
 <?php
-// src/ProductCard.php
+// src/Components/ProductCard.php
 
-namespace App;
+namespace Bakery\Components;
 
 use Waypoint\Html;
 use Waypoint\Live\{Component, Input};
@@ -32,7 +32,7 @@ final class ProductCard
     public string $description = '';
 
     /** @var list<string> */
-    private array $tags = ['tea', 'organic'];
+    private array $tags = ['wholegrain', 'organic'];
 
     /** The description's lines as paragraphs: escaped first, then the markup added. */
     private function description(): Html
@@ -49,41 +49,41 @@ The template:
 {{/* name, stock and the description; the tags only when there are some */}}
 <h3>{{ $this->name }}</h3>
 @if ($this->stock === 0)
-    <em>Sold out</em>
+    <em>Sold out for today</em>
 @elseif ($this->stock < 5)
     <em>Only {{ $this->stock }} left</em>
 @else
-    <span>In stock</span>
+    <span>Baked this morning</span>
 @endif
 {{ $this->description() }}
 <?php $count = count($this->tags) ?>
 @if ($count > 0)
     <ul>
-    @foreach ($this->tags as $i => $tag)
-        <li>{{ $i + 1 }}/{{ $count }} @@{{ $tag }}</li>
-    @endforeach
+        @foreach ($this->tags as $i => $tag)
+            <li>{{ $i + 1 }}/{{ $count }} @@{{ $tag }}</li>
+        @endforeach
     </ul>
 @endif
-<p>Questions? shop@example.com</p>
+<p>Questions? hello@sonnenkorn.test</p>
 ```
 
-With `name="Green <b>tea</b>"`, `stock="3"` and a two-line description whose second line is `<script>x</script>`, it renders:
+With `name="Rye <b>bread</b>"`, `stock="3"` and a two-line description whose second line is `<script>x</script>`, it renders:
 
 ```html
-<h3>Green &lt;b&gt;tea&lt;/b&gt;</h3><em>Only 3 left</em><p>Fresh.</p><p>&lt;script&gt;x&lt;/script&gt;</p>
-<ul><li>1/2 @tea</li><li>2/2 @organic</li></ul><p>Questions? shop@example.com</p>
+<h3>Rye &lt;b&gt;bread&lt;/b&gt;</h3><em>Only 3 left</em><p>Sourdough, 24 hours.</p><p>&lt;script&gt;x&lt;/script&gt;</p>
+<ul><li>1/2 @wholegrain</li><li>2/2 @organic</li></ul><p>Questions? hello@sonnenkorn.test</p>
 ```
 
 The directives' lines leave no whitespace behind ([Whitespace](#whitespace)); the line break after `{{ $this->description() }}` stays, as text does.
 
 ## Printing values
 
-`{{ expr }}` prints the value of a PHP expression, HTML-escaped (quotes included). It is the same as `<?= expr ?>`, which a template escapes too, unlike a plain PHP file:
+`{{ expr }}` prints the value of a PHP expression, HTML-escaped (quotes included). It is the same as `<?= expr ?>`, which a template escapes too, as Waypoint's views do:
 
 ```html
-<p>{{ $this->user->name }}</p>
-<p><?= $this->user->name ?></p>          <!-- the same -->
-<a href="/tasks/{{ $task->id }}" title="{{ $task->title }}">{{ $task->title }}</a>
+<p class="font-medium">{{ $order->customerName }}</p>
+<p class="font-medium"><?= $order->customerName ?></p>          <!-- the same -->
+<a href="/products/{{ $product->slug }}" title="{{ $product->name('en') }}">{{ $product->name('en') }}</a>
 ```
 
 - Strings, numbers and `Stringable` objects print escaped. `null` prints nothing, `true` prints `1`, `false` nothing.
@@ -116,14 +116,14 @@ The syntax is Waypoint's, the same as in its views: [the syntax of views](https:
 | `@if (cond)`, `@elseif (cond)`, `@else`, `@endif` | `<?php if (cond): ?>` and the rest |
 | `@foreach (expr)`, `@endforeach` | `<?php foreach (expr): ?>`, `<?php endforeach ?>` |
 | `@code` ... `@endcode` | `<?php ... ?>` |
-| `@use (App\Status)` | `use App\Status;` for the whole template |
-| `@class.late="$cond"` | the class `late` in the tag's `class` attribute while `$cond` is truthy |
+| `@use (Bakery\Models\OrderStatus)` | `use Bakery\Models\OrderStatus;` for the whole template |
+| `@class.current="$cond"` | the class `current` in the tag's `class` attribute while `$cond` is truthy |
 | `@@` | a literal `@` |
 
-A directive starts a line or follows whitespace, `>` or `}}`, so `shop@example.com` and `@media` stay text. Directives and plain PHP mix freely: `@foreach ($this->visible() as $task)` and `<?php foreach ($this->visible() as $task): ?>` are the same. A mistake keeps the template from compiling, with its line:
+A directive starts a line or follows whitespace, `>` or `}}`, so `hello@sonnenkorn.test` and `@media` stay text. Directives and plain PHP mix freely: `@foreach ($this->cart->lines() as $line)` and `<?php foreach ($this->cart->lines() as $line): ?>` are the same. A mistake keeps the template from compiling, with its line:
 
 ```
-Template '/srv/shop/src/ProductCard.Template.php', line 4: @if has no @endif
+Template '/srv/sonnenkorn/src/Components/ProductCard.Template.php', line 3: @if has no @endif
 ```
 
 What differs in a component's template:
@@ -132,8 +132,8 @@ What differs in a component's template:
 - A template cannot declare anything. A `use` or `namespace` keeps it from compiling (it has its component's, and `@use` adds an import), as do a named `function`, `class`, `interface`, `trait` or `enum`, a `break` or `continue` outside a loop, a `yield` outside a function and an assignment to `$this`, in `@code` and in `<?php ?>` alike. A closure (`$format = fn ($n) => ...`) or a method of the component does what a function would.
 - `@class.` on a child component's tag keeps the template from compiling: a child takes inputs, so put the class on an element inside its template or pass an input.
 - Markup in a comment, `{{/* */}}` or `<!-- -->`, makes no method callable: a `data-on-click` inside one is ignored ([Events and actions](events.md#what-the-browser-can-call)).
-- A value the template needs is best a property or method of the component: typed, and seen by the editor and PHPStan without help. `@code` is for small helpers of the markup: `@code $order = $this->order() @endcode`.
-- [`classes()`](https://github.com/systonia/Waypoint/blob/main/docs/reference/Waypoint/index.md#classes) builds a `class` value in PHP, `classes('row', ['late' => $order->late])`, in every template without an import. It is `Waypoint\classes()`; `Waypoint\Live\classes()` stays as another name for it.
+- A value the template needs is best a property or method of the component: typed, and seen by the editor and PHPStan without help. `@code` is for small helpers of the markup, as at the top of the bakery's `OrderTracker.Template.php`: `@code $order = $this->order() @endcode`.
+- [`classes()`](https://github.com/systonia/Waypoint/blob/main/docs/reference/Waypoint/index.md#classes) builds a `class` value in PHP, `classes('step', ['current' => $step === $order->status])`, in every template without an import. It is `Waypoint\classes()`; `Waypoint\Live\classes()` stays as another name for it.
 
 ### Whitespace
 
@@ -141,16 +141,17 @@ A directive on its own line leaves no whitespace behind: its indentation, the li
 
 ## Class names in a template
 
-A template resolves names as its component's class file does: it shares the file's namespace and its `use` statements (classes, `use function`, `use const` and group imports). With this class:
+A template resolves names as its component's class file does: it shares the file's namespace and its `use` statements (classes, `use function`, `use const` and group imports). The bakery's `src/Components/OrderTracker.php` starts like this:
 
 ```php
 <?php
-// src/Shop/OrderTracker.php
 
-namespace Bakery\Shop;
+namespace Bakery\Components;
 
-use Bakery\Ordering\OrderStatus;
-use Waypoint\Live\Component;
+use Bakery\Models\{Order, OrderStatus};
+use Bakery\Repositories\Orders;
+use Bakery\Services\Format;
+use Waypoint\Live\{Broadcast, Component, Input};
 
 #[Component]
 final class OrderTracker
@@ -159,15 +160,18 @@ final class OrderTracker
 }
 ```
 
-its template names the enum as the class does, and a class of `Bakery\Shop` without any import:
+so its template names the enum and the formatter as the class does, without an import of its own. A class of `Bakery\Components` would need none either:
 
 ```html
 @if ($order->status === OrderStatus::Pending)
-    <p>{{ Receipt::label($order) }}</p>   <!-- Bakery\Shop\Receipt -->
+    <div class="rounded-xl bg-amber-50 p-4 ring-1 ring-amber-200">
+        ...
+    </div>
 @endif
+<td class="py-2 text-right tabular-nums">{{ Format::price($line->totalCents(), $this->i18n->locale()) }}</td>
 ```
 
-- A name from the root without a leading backslash still means the root's: `Bakery\Ordering\OrderStatus::Pending` works as well as `\Bakery\Ordering\OrderStatus::Pending`.
+- A name from the root without a leading backslash still means the root's: `Bakery\Models\OrderStatus::Pending` works as well as `\Bakery\Models\OrderStatus::Pending`.
 - A class of the global namespace needs a leading backslash or an import, as in the class file: `new \DateTimeImmutable()`.
 - In development a changed `use` in the class file compiles the template again, like a saved template.
 - An import that only the template uses looks unused in the class to PHPStan and the editor. `@use` puts it in the template instead.
@@ -178,11 +182,13 @@ its template names the enum as the class does, and a class of `Bakery\Shop` with
 `@use` imports a class, an enum, an interface or a trait for the whole template:
 
 ```html
-@use (Bakery\Ordering\OrderStatus)
-@use (Bakery\Ordering\Pickup as Slot)
+@use (Bakery\Models\OrderStatus)
+@use (Bakery\Services\Format as F)
 
-@if ($order->status === OrderStatus::Pending)
-    <p>{{ Slot::next()->label() }}</p>
+@if ($order->status === OrderStatus::Ready)
+    <p>
+        Ready for pickup on {{ F::day($order->pickupDate, 'en') }}
+    </p>
 @endif
 ```
 
@@ -192,15 +198,15 @@ its template names the enum as the class does, and a class of `Bakery\Shop` with
 
 ## Conditional classes
 
-A class that depends on a condition is a `@class.` in the tag, with the class name after the dot and the condition as its value:
+A class that depends on a condition is a `@class.` in the tag, with the class name after the dot and the condition as its value. The steps of the bakery's order page could mark the current one like this:
 
 ```html
-<li class="row" @class.late="$order->late" @class.bg-green-100="$order->isReady()">
+<li class="rounded-xl p-3" @class.bg-amber-800="$step === $order->status" @class.text-stone-500="$step !== $order->status">
 ```
 
-renders `<li class="row late">` while `$order->late` is true and the order is not ready. The conditions go into the tag's `class` attribute; without one the tag gets one. The attribute's own classes and those of the conditions go through one `classes()` call: each class comes once, joined by one space, with no space left over, also when the attribute's value is empty or comes from `{{ }}`. A class name may be a number (`@class.123`). When the state changes, the next render sends the new `class`.
+renders `<li class="rounded-xl p-3 bg-amber-800">` for the step the order is at. The conditions go into the tag's `class` attribute; without one the tag gets one. The attribute's own classes and those of the conditions go through one `classes()` call: each class comes once, joined by one space, with no space left over, also when the attribute's value is empty or comes from `{{ }}`. A class name may be a number (`@class.123`). When the state changes, the next render sends the new `class`.
 
-- The value is PHP like every expression in a template: `@class.late="$this->isLate()"`. A plain word such as `isLate` is no PHP.
+- The value is PHP like every expression in a template: `@class.ring-2="$this->isToday($order)"`. A plain word such as `isToday` is no PHP.
 - The class name runs to the first `=` outside square brackets, so every Tailwind class works: `@class.md:w-1/2="..."`, `@class.hover:underline`, `@class.bg-[#ff0000]`, `@class.data-[state=open]:block`, `@class.[&>*]:p-4`, `@class.!font-bold`. The browser never sees `@class.`: the compiler removes it.
 - Tailwind reads the template file as text, so it finds these names and generates their CSS as for any other class.
 - In a tag over several lines, an error in a condition is reported at the line of the `class` attribute, or of the first `@class.` when there is none.
@@ -208,10 +214,10 @@ renders `<li class="row late">` while `$order->late` is true and the order is no
 
 ### classes()
 
-For classes computed in PHP or used more than once, [`classes()`](../reference/Waypoint/Live/index.md#classes) builds the same list. Every template can call it without an import, and it works outside templates as `Waypoint\Live\classes()`:
+For classes computed in PHP or used more than once, [`classes()`](../reference/Waypoint/Live/index.md#classes) builds the same list. Every template can call it without an import, and it works outside templates as `Waypoint\classes()`. The bakery's `OrderTracker.Template.php` picks one of two sets:
 
 ```html
-<li class="{{ classes('row', ['late' => $order->late, 'bg-green-100 font-bold' => $order->isReady()]) }}">
+<li data-key="{{ $step->value }}" class="{{ classes('rounded-xl p-3 text-center', $step === $order->status ? 'bg-amber-800 font-semibold text-white' : 'bg-stone-100 text-stone-500') }}">
 ```
 
 - A string is always added and may hold several classes (`'row px-4'`).
@@ -225,7 +231,7 @@ A few toggles read best as `@class.`; a list computed in PHP or used in several 
 `$this` is the component at runtime without any declaration. In the editor, `tenma lsp` with the package's provider knows it too: completion, hover and go-to-definition work on `$this->` in a template ([Development tools](development.md#in-the-editor)). Without the language server, a first line tells the IDE:
 
 ```php
-<?php /** @var \App\ProductCard $this */ ?>
+<?php /** @var \Bakery\Components\ProductCard $this */ ?>
 ```
 
 ## Placing child components
@@ -233,8 +239,8 @@ A few toggles read best as `@class.`; a list computed in PHP or used in several 
 A template places other components by their tag, like a view does. `{{ }}` alone as an attribute's value passes the value itself, not a string:
 
 ```html
-@foreach ($this->tasks->all() as $task)
-    <app-task-row key="{{ $task->id }}" task="{{ $task }}"></app-task-row>
+@foreach ($this->ready() as $order)
+    <app-pickup-row key="{{ $order->code }}" order="{{ $order }}"></app-pickup-row>
 @endforeach
 ```
 

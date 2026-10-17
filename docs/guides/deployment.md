@@ -1,6 +1,6 @@
 ---
 title: Deployment and limits
-description: Run Live in production under Tenma - workers, proxies, memory, and the limits of the proof of concept.
+description: "Run Live in production under Tenma: workers, proxies, memory, and the limits of the proof of concept."
 order: 160
 ---
 
@@ -16,7 +16,7 @@ Each Tenma worker has its own memory. A tab's circuit lives in the worker that a
 
 - **Reconnects** come back to their components only on the same worker. With several workers a reconnect can land on another one and starts over from the page's inputs ([Reconnects](reconnect.md)).
 - **App-wide services** exist once per worker. State that all tabs share belongs in Postgres or Redis, or travels to every worker with `Tenma::publish()` ([Several workers](push.md#several-workers)).
-- **Broadcasts** reach every worker through `Tenma::publish()`, and every process with `tenma --pubsub redis://host`.
+- **Broadcasts** reach every worker through `Tenma::publish()`, and every process with `tenma --pubsub redis://host`. The bakery runs with `tenma --workers 2 index.php`: its orders are in Postgres, so `Broadcast::changed()` is all it needs for the board and the customer's page to follow each other across workers.
 - **Restarts** (a deploy, `--max-requests`, a crash) drop every circuit of the worker. The browsers reconnect and their components start over.
 
 ## Behind a reverse proxy

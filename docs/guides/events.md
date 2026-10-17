@@ -17,51 +17,52 @@ An attribute `data-on-<event>="method"` in a template wires a browser event to a
 
 `data-on-click` and `data-on-submit` call `preventDefault()`: a link with `data-on-click` does not follow its `href`, and a form does not post to the server the classic way. Other event names do nothing in the browser, and the checks warn about them.
 
-A quantity field, a checkbox and a button:
+A birthday cake to order, with a number field, a checkbox and a button:
 
 ```php
 <?php
-// src/Quantity.php
+// src/Components/CakeOrder.php
 
-namespace App;
+namespace Bakery\Components;
 
 use Waypoint\Live\Component;
 
+/** A birthday cake to order: how many people, candles or not. */
 #[Component]
-final class Quantity
+final class CakeOrder
 {
-    public int $quantity = 1;
+    public int $servings = 12;
 
-    public bool $gift = false;
+    public bool $candles = false;
 
-    public bool $published = false;
+    public bool $express = false;
 
-    public function set(int $quantity): void
+    public function serve(int $servings): void
     {
-        $this->quantity = max(1, $quantity);
+        $this->servings = max(4, $servings);
     }
 
-    public function wrap(bool $gift): void
+    public function light(bool $candles): void
     {
-        $this->gift = $gift;
+        $this->candles = $candles;
     }
 
-    public function save(bool $publish = false): void
+    public function save(bool $express = false): void
     {
-        $this->published = $publish;
+        $this->express = $express;
     }
 }
 ```
 
 ```html
-<!-- src/Quantity.Template.php -->
-<input type="number" value="{{ $this->quantity }}" data-on-input="set">
-<label><input type="checkbox" data-on-change="wrap" @if ($this->gift) checked @endif> Gift wrap</label>
-<button data-on-click="save">Save</button>
-<p>{{ $this->quantity }} {{ $this->gift ? 'wrapped' : 'plain' }}</p>
+<!-- src/Components/CakeOrder.Template.php -->
+<input type="number" value="{{ $this->servings }}" data-on-input="serve">
+<label><input type="checkbox" data-on-change="light" @if ($this->candles) checked @endif> Candles</label>
+<button data-on-click="save">Order the cake</button>
+<p>For {{ $this->servings }}, {{ $this->candles ? 'with candles' : 'without candles' }}</p>
 ```
 
-Typing `7` sends `"7"`, which Live converts to `set(7)` for the `int` parameter (below). Ticking the box calls `wrap(true)`.
+Typing `7` sends `"7"`, which Live converts to `serve(7)` for the `int` parameter (below). Ticking the box calls `light(true)`.
 
 ### Typing and the order of events
 
@@ -69,17 +70,17 @@ Typing `7` sends `"7"`, which Live converts to `set(7)` for the `int` parameter 
 
 ## data-arg
 
-A click passes the element's `data-arg` as a string:
+A click passes the element's `data-arg` as a string. An order board that shows today's pickups or all of them:
 
 ```html
-<button data-on-click="show" data-arg="open">Open</button>
-<button data-on-click="show" data-arg="done">Done</button>
+<button data-on-click="show" data-arg="today">Today</button>
+<button data-on-click="show" data-arg="all">All days</button>
 ```
 
 ```php
-public function show(string $filter): void
+public function show(string $days): void
 {
-    $this->filter = $filter;
+    $this->days = $days === 'today' ? 'today' : 'all';
 }
 ```
 
@@ -87,44 +88,79 @@ A click without `data-arg` brings no value, so a method with a required paramete
 
 `data-arg` is good for a fixed value written into the template. For anything that comes from the data (an ID, an object) a bound call is the better choice.
 
-## Bound calls: remove($task)
+## Bound calls: remove($line->product)
 
-A `data-on-*` attribute can call a method with arguments:
+A `data-on-*` attribute can call a method with arguments. The bakery's cart page, from `src/Components/CartEditor.Template.php`:
 
 ```html
-@foreach ($this->visible() as $task)
-    <li data-key="{{ $task->id }}">
-        <input type="checkbox" data-on-change="toggle($task)" @if ($task->done) checked @endif>
-        {{ $task->title }}
-        <button data-on-click="remove($task)">Delete</button>
+@foreach ($this->cart->lines() as $line)
+    <li data-key="{{ $line->product->id }}" class="flex items-center gap-4 py-3">
+        <span class="flex-1 font-medium">{{ $line->product->name($this->i18n->locale()) }}</span>
+        <button data-on-click="less($line->product)" aria-label="{{ $this->i18n->t('One less') }}">−</button>
+        <span class="w-6 text-center tabular-nums">{{ $line->quantity }}</span>
+        <button data-on-click="more($line->product)" aria-label="{{ $this->i18n->t('One more') }}">+</button>
+        <button data-on-click="remove($line->product)" class="text-sm text-stone-500 underline">{{ $this->i18n->t('Remove') }}</button>
     </li>
 @endforeach
 ```
 
 ```php
-public function toggle(Task $task): void
+/** The lines of the cart page. The buttons are bound to the product on the server: the browser only clicks. */
+#[Component]
+final class CartEditor
 {
-    $task->done = !$task->done;
-}
+    #[Inject]
+    private Cart $cart;
 
-public function remove(Task $task): void
-{
-    $this->tasks->remove($task);
+    #[Inject]
+    private Translator $i18n;
+
+    public function more(Product $product): void
+    {
+        $this->cart->add($product);
+    }
+
+    public function less(Product $product): void
+    {
+        $this->cart->set($product, $this->cart->quantity($product->id) - 1);
+    }
+
+    public function remove(Product $product): void
+    {
+        $this->cart->set($product, 0);
+    }
 }
 ```
 
 The arguments are evaluated on the server while the template renders, and they stay there: values of any type, objects and closures included. The browser only gets an ID for the call:
 
 ```html
-<button data-on-click="remove~e535d152bec9c4f8">Delete</button>
+<button data-on-click="remove~e535d152bec9c4f8" class="text-sm text-stone-500 underline">Remove</button>
 ```
 
-A click sends that ID back, and the server calls `remove()` with the very `Task` object the template had. Nothing about the task travels through the browser, so nothing about it can be forged.
+A click sends that ID back, and the server calls `remove()` with the very `Product` the template had, price and stock included. Nothing about the product travels through the browser, so nothing about it can be forged.
 
-- **What the event brings comes after the bound arguments.** `data-on-input="rename($task)"` calls `rename($task, $value)`; `data-on-change="toggle($task)"` on a checkbox calls `toggle($task, true)`, and a method that takes no further parameter ignores it.
-- **Strings inside the attribute use single quotes**, since a `"` ends the attribute: `data-on-click="move($task, 'done')"`.
-- **The same call gets the same ID in every render.** Values count by value. An enum case, and an object that cannot change (a `readonly` class, or one whose properties are all `readonly`), count by class and properties, so a row that every render builds again from the database keeps its ID. Any other object counts as that very object: a list that is reordered keeps its IDs, a removed item takes its ID along, and an object built again by the next render gets a new ID.
-- **A call stays valid for two renders.** The server keeps the bound calls of the last two renders of each component, so a click that was on its way during a render still arrives. A click on an item that is gone since then does nothing.
+- **What the event brings comes after the bound arguments.** The bakery's stock page, `StockEditor`, has one field per product with `data-on-change="set($product)"`; a change calls `set($product, $value)`:
+
+  ```html
+  <input type="number" min="0" value="{{ $product->stock }}" data-on-change="set($product)" aria-label="{{ $product->name($this->i18n->locale()) }}">
+  ```
+
+  ```php
+  /** An emptied field changes nothing. */
+  public function set(Product $product, ?int $stock): void
+  {
+      if ($stock !== null) {
+          $this->products->setStock($product->id, $stock);
+          $this->saved = $this->i18n->t('Saved: {product}', ['product' => $product->name($this->i18n->locale())]);
+      }
+  }
+  ```
+
+  An emptied field sends `""`, which fills the nullable `?int` as `null` (below). A method that takes no further parameter ignores the value.
+- **Strings inside the attribute use single quotes**, since a `"` ends the attribute: `data-on-click="move($order, 'ready')"`.
+- **The same call gets the same ID in every render.** Values count by value. An enum case, and an object that cannot change (a `readonly` class, or one whose properties are all `readonly`), count by class and properties, so a row that every render builds again from the database keeps its ID: the bakery's `Product` and `Order` are `readonly` classes loaded from Postgres on every render. Any other object counts as that very object: a list that is reordered keeps its IDs, a removed item takes its ID along, and an object built again by the next render gets a new ID.
+- **A call stays valid for two renders.** The server keeps the bound calls of the last two renders of each component, so a click that was on its way during a render still arrives. A click on an item that is gone since then does nothing: the order board's `advance($order)` on an order another member of staff has moved on already reaches a method that finds it moved, and nothing happens.
 
 ## After an action
 
@@ -136,9 +172,9 @@ Every action, successful or not, is followed by a render of every top-level comp
 - An element with `data-live-ignore` belongs to the browser once it is on the page: a render does not touch it or anything inside. Use it for an editor, a map or another widget that keeps its own DOM, with a `data-key` so it moves along with its row.
 
 ```html
-@foreach ($this->notes as $note)
-    <div data-key="{{ $note->id }}">
-        <h3>{{ $note->title }}</h3>
+@foreach ($this->products->all() as $product)
+    <div data-key="{{ $product->id }}">
+        <h3>{{ $product->name('en') }}</h3>
         <div class="editor" data-live-ignore></div>
     </div>
 @endforeach
@@ -160,7 +196,7 @@ The browser names a method; the server decides whether it may:
 
 - **Only methods the template names.** A public method of the class that no `data-on-*` attribute names stays out of reach, even though it is public. A method named only in commented-out markup (`<!-- -->` or `{{/* */}}`) is not named.
 - **Only public, non-static methods.** The editor and the checks flag a `data-on-click` that names a private, static or missing method.
-- **Bound calls only by their ID.** `remove($task)` is reachable only through the IDs of the last two renders, with the arguments the template bound.
+- **Bound calls only by their ID.** `remove($line->product)` is reachable only through the IDs of the last two renders, with the arguments the template bound.
 
 A parent's method that a child calls through a closure input is not named in any template, so the browser cannot call it directly ([Child components](children.md#events-up-to-the-parent)).
 
@@ -168,14 +204,14 @@ A parent's method that a child calls through a closure input is not named in any
 
 A call takes at most one value from the browser: the one its event brings (the field's value, the form, `data-arg`). It fills the first parameter the template does not bind; any further parameter keeps its default. A message with more values is refused.
 
-That one value is input like a query parameter. A forged message can send it even for a click that has no `data-arg`, so `save(bool $publish = false)` above can be called as `save("1")` by anyone who writes their own WebSocket messages. Design methods so that this value is harmless or checked:
+That one value is input like a query parameter. A forged message can send it even for a click that has no `data-arg`, so `save(bool $express = false)` of the cake order above can be called as `save("1")` by anyone who writes their own WebSocket messages. Design methods so that this value is harmless or checked:
 
 ```php
-// The browser can choose $publish: check that the user may publish
-public function save(bool $publish = false): void
+// The browser can choose $express: check that the bakery bakes express cakes today
+public function save(bool $express = false): void
 {
-    if ($publish && !$this->mayPublish()) {
-        throw new ForbiddenException('Not allowed to publish');
+    if ($express && !$this->calendar->expressToday()) {
+        throw new ForbiddenException('No express cakes today');
     }
     // ...
 }
@@ -185,14 +221,14 @@ The value is converted to the type of the parameter it fills, by the rules `Wayp
 
 | Browser sends | Parameter | Method gets |
 |---|---|---|
-| `"7"` | `int $quantity` | `7` |
-| `"7.5"`, `"abc"`, `""` | `int $quantity` | refused |
-| `""` | `?int $quantity` | `null` |
-| `"2.5"` | `float $price` | `2.5` |
-| `"false"`, `"off"`, `"0"` | `bool $publish` | `false` |
-| `true` (checkbox) | `bool $gift` | `true` |
-| `"l"` | `Size $size` (a backed enum) | `Size::from('l')`, or refused for a value that is no case |
-| the form's array | `Signup $form` (a `FromArray` DTO) | a `Signup` built from it ([Forms](forms.md#a-dto-for-the-form)) |
+| `"7"` | `int $servings` | `7` |
+| `"7.5"`, `"abc"`, `""` | `int $servings` | refused |
+| `""` | `?int $stock` | `null` |
+| `"2.5"` | `float $kilos` | `2.5` |
+| `"false"`, `"off"`, `"0"` | `bool $express` | `false` |
+| `true` (checkbox) | `bool $candles` | `true` |
+| `"baking"` | `OrderStatus $status` (a backed enum) | `OrderStatus::from('baking')`, or refused for a value that is no case |
+| the form's array | `CheckoutForm $form` (a `FromArray` DTO) | a `CheckoutForm` built from it ([Forms](forms.md#a-dto-for-the-form)) |
 | a string | `array $form` | refused |
 
 A parameter without a type, or `mixed`, gets the value as it came. Check values in the method as you would any other request input.

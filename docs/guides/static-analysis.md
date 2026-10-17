@@ -22,15 +22,17 @@ It finds every class with `#[Component]` below the project's `autoload` and `aut
 
 Each problem is reported at the template's own line:
 
+Run on the bakery with two typos in `OrderBoard.Template.php`, one at a time:
+
 ```
 $ vendor/bin/waypoint-check
-src/ProductList.Template.php:2: error: Call to an undefined method App\Catalog::prodcts().
+src/Components/OrderBoard.Template.php:15: error: Access to an undefined property Bakery\Models\Order::$custmerName.
 waypoint-check: 1 errors, 0 warnings
 ```
 
 ```
 $ vendor/bin/waypoint-check
-src/ProductList.Template.php:4: error: data-on-click="ad($product)": ProductList has no method ad(). Did you mean add()?
+src/Components/OrderBoard.Template.php:23: error: data-on-click="advanse($order)": OrderBoard has no method advanse(). Did you mean advance()?
 waypoint-check: 1 errors, 0 warnings
 ```
 
@@ -48,7 +50,7 @@ So the command fails a CI step as it is. An optional argument names the project'
 
 - PHPStan runs with the project's `phpstan.neon` (or `phpstan.neon.dist`): its level, its extensions, its bootstrap files. Without one, it runs at level 6.
 - The generated files go to the system's temp directory (`waypoint-check-<hash of the project path>`), one per component and view, never into the project.
-- Types in templates come from the component's properties and methods. A property's `@var list<Task>` lets PHPStan check what a loop over it does with each `$task`.
+- Types in templates come from the component's properties and methods. A method's `@return list<Order>` or a property's `@var list<Order>` lets PHPStan check what a loop over it does with each `$order`; a `@model` does the same for a view, as in the bakery's `views/Shop/Catalog.php` (`@model (list<Bakery\Models\Product>)`).
 
 ### In the editor while saving
 
@@ -65,6 +67,8 @@ return [
     ),
 ];
 ```
+
+The bakery's `tenma.dev.php` has one hook already, for its stylesheet; this one goes next to it.
 
 `Waypoint\View\Check::publish()` runs PHPStan on the templates and views and hands the findings to `Tenma::diagnostics()`, which `tenma lsp` shows at their line. The checks of the first kind already reach the editor while typing, through the language server ([Development tools](development.md#in-the-editor)).
 
@@ -84,10 +88,12 @@ includes:
 
 ## In CI
 
+The bakery's checks, from its README:
+
 ```bash
-vendor/bin/phpstan analyse
-vendor/bin/waypoint-check
 vendor/bin/phpunit
+vendor/bin/phpstan
+vendor/bin/waypoint-check
 ```
 
 PHPStan checks the classes, `waypoint-check` the templates and views, and the PHPUnit tests with [`Testing\Tab`](testing.md) prove that the templates wire the right methods to the right elements.

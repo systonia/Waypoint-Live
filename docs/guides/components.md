@@ -8,127 +8,70 @@ A live component is a PHP class with the [`#[Component]`](../reference/Waypoint/
 
 ## A component with state
 
-A task list that shows open or finished tasks from an app-wide service:
+The button on every product card of the bakery, from `src/Components/AddToCart.php`. The page passes the product's id; the cart and the products come from services:
 
 ```php
 <?php
-// src/TaskList.php
 
-namespace App;
+namespace Bakery\Components;
 
+use Bakery\Repositories\Products;
+use Bakery\Services\Cart;
 use Waypoint\Attributes\Inject;
+use Waypoint\I18n\Translator;
 use Waypoint\Live\{Component, Input};
 
+/** The button on a product card and page. The product id comes from the page, so the action looks it up again. */
 #[Component]
-final class TaskList
+final class AddToCart
 {
     #[Input]
-    public string $title = 'Tasks';
+    public int $product = 0;
 
     #[Inject]
-    private Tasks $tasks;
+    private Cart $cart;
 
-    private string $filter = 'open';
+    #[Inject]
+    private Products $products;
 
-    public function show(string $filter): void
+    #[Inject]
+    private Translator $i18n;
+
+    private ?string $notice = null;
+
+    public function add(): void
     {
-        $this->filter = $filter;
-    }
-
-    public function toggle(Task $task): void
-    {
-        $task->done = !$task->done;
-    }
-
-    public function remove(Task $task): void
-    {
-        $this->tasks->remove($task);
-    }
-
-    /** @return list<Task> */
-    private function visible(): array
-    {
-        return $this->tasks->all(done: $this->filter === 'done');
+        $product = $this->products->byId($this->product);
+        if ($product === null) {
+            return;
+        }
+        $this->notice = $this->cart->add($product) ? null : $this->i18n->t('That is all we have left.');
     }
 }
 ```
 
 ```html
-<!-- src/TaskList.Template.php -->
-<h2>{{ $this->title }}</h2>
-<nav>
-    <button data-on-click="show" data-arg="open">Open</button>
-    <button data-on-click="show" data-arg="done">Done</button>
-</nav>
-<ul>
-@foreach ($this->visible() as $task)
-    <li data-key="{{ $task->id }}">
-        <input type="checkbox" data-on-change="toggle($task)" @if ($task->done) checked @endif>
-        {{ $task->title }}
-        <button data-on-click="remove($task)">Delete</button>
-    </li>
-@endforeach
-</ul>
-```
-
-`Tasks` and `Task` are plain classes of the app:
-
-```php
-<?php
-// src/Task.php
-
-namespace App;
-
-final class Task
-{
-    public function __construct(
-        public readonly int $id,
-        public string $title,
-        public bool $done = false,
-    ) {
-    }
-}
-```
-
-```php
-<?php
-// src/Tasks.php
-
-namespace App;
-
-/** One for the whole app: every tab sees the same tasks. */
-final class Tasks
-{
-    /** @var array<int, Task> */
-    private array $tasks = [];
-
-    private int $next = 1;
-
-    public function add(string $title): Task
-    {
-        return $this->tasks[$this->next] = new Task($this->next++, $title);
-    }
-
-    public function remove(Task $task): void
-    {
-        unset($this->tasks[$task->id]);
-    }
-
-    /** @return list<Task> */
-    public function all(?bool $done = null): array
-    {
-        return array_values(array_filter($this->tasks, static fn (Task $t) => $done === null || $t->done === $done));
-    }
-}
+<!-- src/Components/AddToCart.Template.php -->
+<div class="flex flex-wrap items-center gap-3">
+    <button data-on-click="add" class="rounded-lg bg-amber-800 px-4 py-2 font-medium text-white hover:bg-amber-700">
+        {{ $this->i18n->t('Add to cart') }}
+    </button>
+    @if ($this->cart->quantity($this->product) > 0)
+        <span class="text-sm text-stone-600">{{ $this->i18n->t('{count} in your cart', ['count' => $this->cart->quantity($this->product)]) }}</span>
+    @endif
+    @if ($this->notice !== null)
+        <span role="status" class="text-sm text-red-700">{{ $this->notice }}</span>
+    @endif
+</div>
 ```
 
 What each part does:
 
-- **`$filter`** is private state. It lives as long as the component; the browser cannot read or set it.
-- **`$title`** is an [`#[Input]`](../reference/Waypoint/Live/Input.md): the page sets it with `<app-task-list title="Home"></app-task-list>`. Only public, non-static, non-readonly properties with `#[Input]` can be set from outside.
-- **`$tasks`** comes from the app's container through Waypoint's `#[Inject]`, as in a controller ([Services](services.md)).
-- **`show()`, `toggle()` and `remove()`** are actions: the template names them in `data-on-*` attributes, so the browser may call them. `toggle($task)` and `remove($task)` are bound to the `Task` object on the server; the browser never sees it ([Events and actions](events.md)).
-- **`visible()`** is private and only the template calls it. Templates see private members, since they run with `$this` as the component.
+- **`$product`** is an [`#[Input]`](../reference/Waypoint/Live/Input.md): the catalog sets it with `<app-add-to-cart product="{{ $product->id }}"></app-add-to-cart>`. Only public, non-static, non-readonly properties with `#[Input]` can be set from outside. Its value comes back from the browser, so `add()` looks the product up again instead of trusting more than an id.
+- **`$notice`** is private state. It lives as long as the component; the browser cannot read or set it.
+- **`$cart`, `$products` and `$i18n`** come from the app's container through Waypoint's `#[Inject]`, as in a controller ([Services](services.md)). `Cart` is one per browser tab, so the badge in the header counts along.
+- **`add()`** is an action: the template names it in `data-on-click`, so the browser may call it ([Events and actions](events.md)).
+- The template calls **private members** (`$this->cart`, `$this->notice`): templates run with `$this` as the component.
 
 After every action the template renders again and the browser receives the new HTML.
 
@@ -138,9 +81,9 @@ Without arguments, `#[Component]` derives both names from the class:
 
 | Class | Selector (tag) | Template |
 |---|---|---|
-| `App\Counter` | `app-counter` | `Counter.Template.php` next to `Counter.php` |
-| `App\TaskList` | `app-task-list` | `TaskList.Template.php` |
-| `App\CitySearch` | `app-city-search` | `CitySearch.Template.php` |
+| `Bakery\Components\AddToCart` | `app-add-to-cart` | `AddToCart.Template.php` next to `AddToCart.php` |
+| `Bakery\Components\CartBadge` | `app-cart-badge` | `CartBadge.Template.php` |
+| `Bakery\Components\OrderBoard` | `app-order-board` | `OrderBoard.Template.php` |
 
 Both can be given. The template path is relative to the class's file:
 
@@ -158,10 +101,13 @@ A selector is a custom element name: lowercase, with at least one dash, and uniq
 
 ## Registering components
 
-Only listed components can be created. The app lists its own in [`LivePlugin`](../reference/Waypoint/Live/LivePlugin.md):
+Only listed components can be created. The app lists its own in [`LivePlugin`](../reference/Waypoint/Live/LivePlugin.md), as the bakery's `app.php` does:
 
 ```php
-$app->plugin(new LivePlugin([Counter::class, TaskList::class, CartSummary::class]));
+$app->plugin(new LivePlugin([
+    CartBadge::class, AddToCart::class, CartEditor::class, Checkout::class, OrderTracker::class,
+    OrderBoard::class, StockEditor::class,
+]));
 ```
 
 A selector that is not listed is refused, whether a page, a template or a WebSocket message asks for it.
@@ -174,11 +120,12 @@ A Waypoint plugin that brings live components of its own requires `LivePlugin` a
 use Waypoint\Live\{Components, LivePlugin};
 use Waypoint\Plugin\PluginBase;
 
-final class AccountPlugin extends PluginBase
+/** Stamp cards for regulars: ten coffees, the eleventh is on the bakery. */
+final class StampCardPlugin extends PluginBase
 {
     public function name(): string
     {
-        return 'account';
+        return 'stamp-card';
     }
 
     public function requires(): array
@@ -188,37 +135,41 @@ final class AccountPlugin extends PluginBase
 
     public function boot(Components $components): void
     {
-        $components->add(LoginForm::class, AccountMenu::class);
+        $components->add(StampCard::class, StampCounter::class);
     }
 }
 ```
 
 `boot()` takes what it needs as parameters; Waypoint passes them from the container. Components are added at boot: once a page has rendered a component, `add()` throws.
 
-A plugin's components name their selector with a prefix of their own (`selector: 'account-login'`), so that they never meet an app's `app-` ones.
+A plugin's components name their selector with a prefix of their own (`selector: 'stamps-card'`), so that they never meet an app's `app-` ones.
 
 ## Placing a component
 
-A view places a component by its tag, with the inputs as attributes in double quotes:
+A view places a component by its tag, with the inputs as attributes in double quotes. From the bakery's `views/Shop/Catalog.php`:
 
 ```html
-<app-task-list title="Home"></app-task-list>
+@if ($product->stock > 0)
+    <app-add-to-cart product="{{ $product->id }}"></app-add-to-cart>
+@else
+    <p class="font-medium text-stone-500">{{ $this->t('Sold out for today') }}</p>
+@endif
 ```
 
-Live finds these tags in every HTML response after it was rendered, and replaces each with the component's HTML. The tag needs an empty body; attributes that are no input (`class`, `id`) stay on the tag. An attribute's value arrives as a string, which PHP converts for a typed property: `count="3"` fills an `int`. A `bool` or an array needs the view helper, which takes the values as they are:
+Live finds these tags in every HTML response after it was rendered, and replaces each with the component's HTML. The tag needs an empty body; attributes that are no input (`class`, `id`) stay on the tag. An attribute's value arrives as a string, which PHP converts for a typed property: `product="3"` fills an `int`. A `bool` or an array needs the view helper, which takes the values as they are:
 
-```php
-<?= $this->live('app-task-list', ['title' => 'Home']) ?>
+```html
+{{ $this->live('app-add-to-cart', ['product' => $product->id]) }}
 ```
 
-It returns a `Waypoint\Html`, so the view's escaping `<?= ?>` prints the component's markup as it is.
+It returns a `Waypoint\Html`, so the view's escaping `{{ }}` prints the component's markup as it is.
 
 A page's inputs travel through the browser and back when the WebSocket connects, so they must be JSON values: numbers, strings, booleans, `null` and arrays of them. An object is refused with an error; pass its ID and let the component load it. A template that places a child component can pass any value, objects and closures included ([Child components](children.md)).
 
 The rendered tag looks like this; the browser finds the component by `data-live` and creates it again from `data-inputs`:
 
 ```html
-<app-task-list data-live data-inputs="{&quot;title&quot;:&quot;Home&quot;}"><h2>Home</h2>...</app-task-list>
+<app-add-to-cart data-live data-inputs="{&quot;product&quot;:&quot;3&quot;}"><div class="flex flex-wrap items-center gap-3">...</div></app-add-to-cart>
 ```
 
 ## Lifecycle
@@ -235,8 +186,9 @@ Things that follow from this:
 - **The constructor runs before services and inputs are set.** It must not take required arguments, and it cannot use `#[Inject]` properties or inputs: they are not set yet. Use it for defaults that need code; compute what depends on services or inputs in a method the template calls, or in the action that needs it.
 
   ```php
+  /** The time in the shop's header, for the customers who wait for the next tray. */
   #[Component]
-  final class Clock
+  final class ShopClock
   {
       private string $time;
 

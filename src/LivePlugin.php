@@ -15,10 +15,10 @@ use Waypoint\Plugin\{ClientAsset, PluginBase, ResponseHook, ViewHelper};
 use Waypoint\Routing\{PropertyInjector, RouteGuard};
 
 /**
- * Register with `$app->plugin(new LivePlugin([Counter::class, Search::class]))`: classes with a #[Component]
+ * Register with `$app->plugin(new LivePlugin([AddToCart::class, CartBadge::class]))`: classes with a #[Component]
  * attribute, and only these can be created; the browser names them by selector. A plugin brings its own through
  * the Components service. Adds
- * `$this->live('app-counter', $inputs)` and `<app-counter count="3"></app-counter>` for views, the WebSocket route `/_live` (LiveController) and the client
+ * `$this->live('app-add-to-cart', $inputs)` and `<app-add-to-cart product="3"></app-add-to-cart>` for views, the WebSocket route `/_live` (LiveController) and the client
  * script. Runs under Tenma only.
  */
 final class LivePlugin extends PluginBase implements ViewHelper, ClientAsset, ResponseHook
@@ -340,7 +340,7 @@ final class LivePlugin extends PluginBase implements ViewHelper, ClientAsset, Re
     }
 
     /**
-     * `<?= $this->live('app-counter', $inputs) ?>` in a view: markup, which the view prints as it is.
+     * `{{ $this->live('app-add-to-cart', $inputs) }}` in a view: markup, which the view prints as it is.
      *
      * @param array<string, mixed> $inputs
      */

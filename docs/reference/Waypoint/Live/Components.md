@@ -1,6 +1,6 @@
 ---
 title: "Components"
-description: "The app's live components: those given to LivePlugin, and those another plugin adds in its boot(), as `$container->get(Components::class)->add(Login::class)`."
+description: "The app's live components: those given to LivePlugin, and those another plugin adds in its boot(), which takes this service as a parameter: `boot(Components $components)`, then `$components->add(StampCard::class)`."
 order: 100
 generated: true
 ---
@@ -11,9 +11,10 @@ generated: true
 final class Components
 ```
 
-The app's live components: those given to LivePlugin, and those another plugin adds in its boot(), as
-`$container->get(Components::class)->add(Login::class)`. Only these can be created; the browser names them by
-selector. The templates are compiled on first use, once every selector is known.
+The app's live components: those given to LivePlugin, and those another plugin adds in its boot(), which takes
+this service as a parameter: `boot(Components $components)`, then `$components->add(StampCard::class)`. Only
+these can be created; the browser names them by selector. The templates are compiled on first use, once every
+selector is known.
 
 ## Methods
 

@@ -1,6 +1,6 @@
 ---
 title: "Mounted"
-description: "A component in a Tab: events go through its template as the browser's would, by the method an element names (`click('increment')`) or by a CSS selector (`click('button.reset')`), and the assertions read the HTML the browser would have."
+description: "A component in a Tab: events go through its template as the browser's would, by the method an element names (`click('add')`) or by a CSS selector (`click('li[data-key=\"3\"] button')`), and the assertions read the HTML the browser would have."
 order: 100
 generated: true
 ---
@@ -12,7 +12,7 @@ final class Mounted
 ```
 
 A component in a Tab: events go through its template as the browser's would, by the method an element names
-(`click('increment')`) or by a CSS selector (`click('button.reset')`), and the assertions read the HTML the
+(`click('add')`) or by a CSS selector (`click('li[data-key="3"] button')`), and the assertions read the HTML the
 browser would have.
 
 ## Methods

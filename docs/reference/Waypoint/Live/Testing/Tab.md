@@ -15,8 +15,8 @@ One browser tab in a test, without a browser: the app's components with its serv
 messages the browser sends, so a test proves the template's wiring too.
 
     $tab = Tab::for($app);
-    $counter = $tab->mount('app-counter', ['count' => 1]);
-    $counter->click('increment')->assertSee('2');
+    $button = $tab->mount('app-add-to-cart', ['product' => 3]);
+    $button->click('add')->assertSee('1 in your cart');
     $tab->advance(1.0);                              // #[Every] timers
 
 An error the browser would only see as `data-live-error` fails the test with its own stack. Two tabs of one app

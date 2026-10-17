@@ -1,68 +1,65 @@
 ---
 title: Testing
-description: Drive components in PHPUnit with Testing\Tab and Testing\Mounted - events through the template, timers on fake time, fakes for scoped services.
+description: "Drive components in PHPUnit with Testing\\Tab and Testing\\Mounted: events through the template, timers on fake time, fakes for scoped services."
 order: 140
 ---
 
 [`Waypoint\Live\Testing\Tab`](../reference/Waypoint/Live/Testing/Tab.md) is a browser tab without a browser, for the app's PHPUnit tests. Its components get the app's services, and every event goes through the rendered template the way the browser sends it: `click('remove')` finds the element whose `data-on-click` names `remove` and sends what the browser would send. So a test also proves that the template wires the method up.
 
-No WebSocket, no Tenma and no running server are involved; the tests run under plain PHP.
+No WebSocket and no running server are involved. The tests run under plain PHP, or under Tenma when the app needs it: the bakery's `tests/Support/bootstrap.php` hands the PHPUnit run to `tenma`, so its services can wait on Postgres.
 
 ## A complete test
 
+The bakery's tests share one test case, which builds the app from `app.php` on the test database with fresh demo data, and opens tabs for a customer and for staff. Shortened from `tests/Support/AppTestCase.php`:
+
 ```php
-<?php
-
-namespace App\Tests;
-
-use App\{TaskList, Tasks};
-use PHPUnit\Framework\TestCase;
-use Waypoint\App;
-use Waypoint\Live\LivePlugin;
-use Waypoint\Live\Testing\Tab;
-use Waypoint\Waypoint;
-
-final class TaskListTest extends TestCase
+abstract class AppTestCase extends TestCase
 {
-    private App $app;
+    protected const OWNER = ['sub' => 1, 'name' => 'Anna', 'role' => 'owner'];
+
+    protected const STAFF = ['sub' => 2, 'name' => 'Ben', 'role' => 'staff'];
+
+    /** The cart cookie of the customer's browser in customerTab(). */
+    protected const CART = '0b3c2a1e-5d4f-4a8b-9c7d-6e5f4a3b2c1d';
 
     protected function setUp(): void
     {
-        Waypoint::reset();
-        $this->app = Waypoint::create();
-        $this->app->plugin(new LivePlugin([TaskList::class]));
-        $this->app->attach([]);
+        parent::setUp();
+        require __DIR__ . '/../../app.php';
+        $this->app()->get(DatabaseTasks::class)->reset();
     }
 
-    protected function tearDown(): void
+    /** A tab of the customer's browser, with its cart cookie. */
+    protected function customerTab(): Tab
     {
-        Waypoint::reset();
-    }
-
-    public function testTasksCanBeFinishedAndDeleted(): void
-    {
-        $tasks = $this->app->get(Tasks::class);
-        $tasks->add('Buy milk');
-        $tasks->add('Call Anna');
-
-        $list = Tab::for($this->app)->mount('app-task-list', ['title' => 'Home']);
-        $list->assertSee('Home')->assertSee('Buy milk');
-
-        $list->change('li[data-key="1"] input', true)->assertDontSee('Buy milk');
-        $list->click('nav button:nth-child(2)')->assertSee('Buy milk')->assertDontSee('Call Anna');
-        $list->click('show')->click('li[data-key="2"] button')->assertDontSee('Call Anna');
+        return Tab::for($this->app(), Request::fromParts('GET', '/_live', cookies: ['cart' => self::CART]));
     }
 }
 ```
 
-`Tab::for()` needs the app after `attach()`, when the plugins are booted. The app's services are the app's: the test above reaches `Tasks` through `$this->app->get()` and fills it before mounting.
+`TestCase` is Waypoint's (`Waypoint\Testing\TestCase`): `$this->app()` is the app that `app.php` built, after `attach()`. A test of the add button, `tests/Components/AddToCartTest.php`:
+
+```php
+final class AddToCartTest extends AppTestCase
+{
+    public function testTheButtonStopsAtTheStock(): void
+    {
+        $this->db()->execute('UPDATE products SET stock = 1 WHERE id = 3');
+        $this->customerTab()->mount('app-add-to-cart', ['product' => '3'])->click('add')->click('add')
+            ->assertSee('1 in your cart')
+            ->assertSee('That is all we have left.');
+    }
+}
+```
+
+`Tab::for()` needs the app after `attach()`, when the plugins are booted. The app's services are the app's: a test reaches them through `$this->app()->get()`, to prepare data or to check it afterwards.
 
 ## Mounting
 
 ```php
 $tab = Tab::for($app);                               // a tab, as a new browser connection
 $tab = Tab::for($app, $request);                     // with the connection's request: cookies, $request->jwt
-$counter = $tab->mount('app-counter', ['count' => 1]);
+$tracker = $tab->mount('app-order-tracker', ['code' => $order->code]);
 ```
 
 [`mount()`](../reference/Waypoint/Live/Testing/Tab.md#mount) places a top-level component the way the browser does when it connects, with the inputs the page would pass, and returns a [`Mounted`](../reference/Waypoint/Live/Testing/Mounted.md). A tab may hold several components; they share the tab's `#[Scoped]` services, as in the browser.
@@ -70,22 +67,21 @@ $counter = $tab->mount('app-counter', ['count' => 1]);
 [`Tab::page()`](../reference/Waypoint/Live/Testing/Tab.md#page) returns the HTML a page shows before any connection, which is what users without JavaScript see:
 
 ```php
-$html = Tab::page($app, 'app-counter', ['count' => 7]);
-$this->assertStringContainsString('Clicked 7 times', $html);
+$html = Tab::page($app, 'app-add-to-cart', ['product' => 3]);
+$this->assertStringContainsString('Add to cart', $html);
 ```
 
 ## Events
 
-Each event method takes a target: either a method name, which finds the element whose attribute names it (also as a bound call such as `remove($task)`), or a CSS selector, which finds the element it selects, provided that element has the attribute:
+Each event method takes a target: either a method name, which finds the element whose attribute names it (also as a bound call such as `remove($line->product)`), or a CSS selector, which finds the element it selects, provided that element has the attribute:
 
 ```php
-$m->click('increment');                     // the element with data-on-click="increment"
-$m->click('button.reset');                  // or a CSS selector; its data-arg goes along
-$m->click('li[data-key="2"] button');       // a bound call, picked by where it is
-$m->input('#search', 'Ber');                // data-on-input, without the 150 ms wait
-$m->change('#agree', true);                 // data-on-change: a value, or true/false for a checkbox
-$m->submit('form', ['title' => 'Trip']);    // data-on-submit with these fields
-$m->upload('#photo', 'a.jpg', $bytes, 'image/jpeg');   // a file in a data-on-change file input
+$m->click('add');                                    // the element with data-on-click="add"
+$m->click('li[data-key="K7Q2"] button');             // or a CSS selector: a bound call, picked by where it is
+$m->input('input[type=search]', 'pretz');            // data-on-input, without the 150 ms wait
+$m->change('input[aria-label="Lye pretzel"]', '55'); // data-on-change: a value, or true/false for a checkbox
+$m->submit('form', ['name' => 'Mia', 'email' => 'mia@example.test', 'pickupDate' => $day]);   // data-on-submit with these fields
+$m->upload('input[type=file]', 'pretzel.png', $bytes, 'image/png');                            // a file in a data-on-change file input
 ```
 
 A target that matches nothing fails with `Nothing in <c0> has data-on-click="reset" or is "reset" with data-on-click`. That is the point: a method the template does not wire up cannot be called by a test either.
@@ -95,17 +91,17 @@ Each event method returns the `Mounted`, so assertions chain.
 ## Assertions and state
 
 ```php
-$m->assertSee('Clicked 2 times');           // text, as the template prints it: escaped
-$m->assertDontSee('admin');
+$m->assertSee('2 in your cart');            // text, as the template prints it: escaped
+$m->assertDontSee('Please confirm');
 $m->html();                                 // the HTML the browser has inside the component's tag
 $m->component();                            // the component object, for its state
-$tab->assertNavigatedTo('/login');          // where the last navigate() sent the browser
+$tab->assertNavigatedTo("/orders/$code/thanks");   // where the last navigate() sent the browser
 ```
 
-`assertSee()` escapes its text first, as `{{ }}` would: `assertSee('Hello <b>')` finds `Hello &lt;b&gt;`. To look for markup, search `html()`:
+`assertSee()` escapes its text first, as `{{ }}` would: `assertSee('Rye <b>')` finds `Rye &lt;b&gt;`. To look for markup, search `html()`, as `OrderTrackerTest` does for the current step:
 
 ```php
-$this->assertStringContainsString('value="50"', $export->html());
+$this->assertMatchesRegularExpression('/aria-current="step"\s*>\s*In the oven/', $tracker->html());
 ```
 
 ## Children
@@ -113,10 +109,10 @@ $this->assertStringContainsString('value="50"', $export->html());
 [`find()`](../reference/Waypoint/Live/Testing/Mounted.md#find) reaches a child that the component's template placed, by selector and key, or the first one of its tag without a key. It returns a `Mounted` with the same methods:
 
 ```php
-$board = Tab::for($app)->mount('app-task-board');
-$row = $board->find('app-task-row', 1);
-$row->click('done');
-$board->assertSee('Done: Buy milk');
+$desk = Tab::for($app)->mount('app-pickup-desk');
+$row = $desk->find('app-pickup-row', 'K7Q2');
+$row->click('handOver')->click('paid');
+$desk->assertSee('Handed over: K7Q2');
 ```
 
 ## Timers
@@ -125,20 +121,27 @@ $board->assertSee('Done: Buy milk');
 
 ```php
 $tab = Tab::for($app);
-$export = $tab->mount('app-export');        // #[Every(0.5)] poll()
+$export = $tab->mount('app-sales-export');  // #[Every(0.5)] poll()
 $tab->advance(1.0);                         // poll() runs twice
 ```
 
 ## Users and requests
 
-The tab's `Connection` gets the request given to `Tab::for()`:
+The tab's `Connection` gets the request given to `Tab::for()`. The bakery's staff tab sets the JWT the back office's sign-in would leave:
 
 ```php
-use Waypoint\Http\Request;
+protected function staffTab(array $user): Tab
+{
+    $request = Request::fromParts('GET', '/_live');
+    $request->jwt = $user;
+    return Tab::for($this->app(), $request);
+}
 
-$request = Request::fromParts('GET', '/_live', cookies: ['session' => 'abc']);
-$request->jwt = ['sub' => 7];
-$list = Tab::for($app, $request)->mount('app-invoice-list');
+// StockEditorTest
+$this->staffTab(self::STAFF)->mount('app-stock-editor')
+    ->change('input[aria-label="Lye pretzel"]', '55')
+    ->assertSee('Saved: Lye pretzel');
+$this->assertSame(55, $this->sql('SELECT stock FROM products WHERE id = 3'));
 ```
 
 ## Fakes
@@ -146,10 +149,10 @@ $list = Tab::for($app, $request)->mount('app-invoice-list');
 [`with()`](../reference/Waypoint/Live/Testing/Tab.md#with) puts a service into the tab, in place of the `#[Scoped]` class it is or extends, before the first `mount()`:
 
 ```php
-$tab = Tab::for($app)->with(new class extends Cart {
-    public array $items = ['Tea' => 3];
+$tab = Tab::for($app)->with(new class extends Wishlist {
+    public array $products = ['croissant', 'pretzel'];
 });
-$tab->mount('app-cart-badge')->assertSee('Cart (3)');
+$tab->mount('app-wishlist-badge')->assertSee('Saved (2)');
 ```
 
 Anything else is refused: the app's services come from the app.
@@ -159,19 +162,46 @@ Anything else is refused: the app's services come from the app.
 An error that the browser would only see as `data-live-error` fails the test with its own exception and stack:
 
 ```php
-$this->expectExceptionMessage('Not logged in');
-Tab::for($app)->mount('app-account-menu')->click('openSettings');
+$this->expectException(UnauthorizedException::class);
+Tab::for($this->app())->mount('app-order-board');     // the board is for signed-in staff only
 ```
 
 ## Several tabs
 
-Two tabs of one app share its app-wide services, so a [broadcast](push.md#changes-for-every-tab) in one renders the other:
+Two tabs of one app share its app-wide services, so a [broadcast](push.md#changes-for-every-tab) in one renders the other. Under Tenma it travels through `Tenma::publish()` and takes a moment; the bakery's `settle()` waits for it ([Testing broadcasts](push.md#testing)):
 
 ```php
-$anna = Tab::for($app)->mount('app-chat');
-$ben = Tab::for($app)->mount('app-chat');
-$anna->submit('form', ['message' => 'Hello']);
-$ben->assertSee('Hello');
+$morning = $this->staffTab(self::STAFF)->mount('app-order-board');
+$office = $this->staffTab(self::OWNER)->mount('app-order-board');
+$orders = $this->app()->get(Orders::class);
+$order = $orders->place([4 => 3], 'Lena', 'lena@example.test', date('Y-m-d', strtotime('tomorrow')), 'en');
+$orders->confirm($order->id);
+$this->broadcast();
+$morning->click('li[data-key="' . $order->code . '"] button');
+$this->settle();
+$this->assertMatchesRegularExpression('/data-key="baking".*data-key="' . $order->code . '"/s', $office->html());
 ```
+
+## Against a running server
+
+`Tab` drives the components in the test's own process. To test the app as it runs, with several workers, the bakery's `tests/SiteTest.php` starts `tenma --workers 2 index.php` and talks to `/_live` like a browser, with a small WebSocket client of its own (`tests/Support/LiveClient.php`, not part of Live). It sends the messages `live.js` sends:
+
+```php
+$board = new LiveClient($this->port, ['session' => JWT::encode(self::STAFF)]);
+$board->mount('app-order-board');
+
+$catalog = new LiveClient($this->port, $this->cookies);
+$catalog->mount('app-add-to-cart', ['product' => '4']);
+$catalog->call('add');
+
+$checkout = new LiveClient($this->port, $this->cookies);
+$checkout->mount('app-checkout');
+$checkout->call('place', [['name' => 'Emma', 'email' => 'emma@example.test', 'pickupDate' => $day]]);
+
+// The board, opened before the order existed, shows it without a reload, from whichever worker
+$board->waitFor('/Emma.*2 × Butter croissant/s');
+```
+
+The messages are an implementation detail of Live and may change; `Tab` is the stable way to test components.
 
 See also: [`Tab`](../reference/Waypoint/Live/Testing/Tab.md), [`Mounted`](../reference/Waypoint/Live/Testing/Mounted.md), [Static analysis](static-analysis.md).

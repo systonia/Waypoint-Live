@@ -10,6 +10,8 @@ In development Live shows a lot more than in production: saved templates appear 
 APP_ENV=development tenma --watch index.php
 ```
 
+The bakery puts `APP_ENV=development` into its `.env` and starts with `tenma --watch index.php`.
+
 In production none of this happens: the browser only learns that a component failed (`data-live-error`), and the details go to the log.
 
 ## Hot reload
@@ -23,8 +25,8 @@ In production none of this happens: the browser only learns that a component fai
 
 Once the app has started, and after every saved template, Live checks every component and its template for mistakes that would otherwise only show at a click or a render:
 
-- a `data-on-*` that names a method the component lacks, or one that is private or static (`Did you mean add()?`),
-- a `data-on-click="add"` without `data-arg` for a method with a required parameter, which a click can never fill (a warning),
+- a `data-on-*` that names a method the component lacks, or one that is private or static (`Did you mean advance()?`),
+- a `data-on-click="show"` without `data-arg` for a method with a required parameter, which a click can never fill (a warning),
 - a `data-on-<event>` for an event `live.js` does not listen to, such as `data-on-keyup` (a warning),
 - PHP that would end the worker when the template renders: a `use` or a named function in `@code`, a `break` outside a loop ([Templates](templates.md#the-syntax)),
 - an attribute of a child tag that is no input of the child, with the inputs it has,
@@ -34,14 +36,14 @@ Once the app has started, and after every saved template, Live checks every comp
 - a `#[Every]` method that cannot run as a timer,
 - an `#[Input]` property that is not public, static or readonly.
 
-The problems go to the terminal and, under a Tenma with `Tenma::diagnostics()`, to the editor, also for templates that are not open. A page that uses a tag close to a selector (`<app-conter>`) or an attribute close to an input gets a warning in the log, once per worker.
+The problems go to the terminal and, under a Tenma with `Tenma::diagnostics()`, to the editor, also for templates that are not open. A page that uses a tag close to a selector (`<app-cart-bagde>`) or an attribute close to an input gets a warning in the log, once per worker.
 
 ## Errors in the page
 
 An error in an action, a timer or a render shows in the page, in a panel at the bottom that the page's own CSS cannot reach:
 
 - the exception's class and message,
-- the component's tag and what it was doing (`call "add"`, `mount`, `#[Every] tick`, `a broadcast`),
+- the component's tag and what it was doing (`call "advance"`, `mount`, `#[Every] tick`, `a broadcast`),
 - for an error in a template, the template's file and line, with the lines around it,
 - the stack, with the app's frames first and those of Live, packages and Tenma folded,
 - links that open each file at its line in the editor.
@@ -83,14 +85,15 @@ localStorage.liveDebug = '1'
 or add `?live-debug` to the page's URL. Every action, timer, broadcast and reconnect then logs a group: what caused it, its time on the server and the round trip, and per component the render time, the size of what was sent (or that nothing changed) and the time the browser took to patch it.
 
 ```
-live call "add" → 3.1 ms server · 9 ms round trip · 1 of 2 sent · 0.4 KB
-  c0     <app-product-list> rendered 0.8 ms  unchanged
-  c1     <app-cart-badge> rendered 0.3 ms  sent 0.1 KB, patched 0.2 ms
+live call "add" → 3.1 ms server · 9 ms round trip · 2 of 7 sent · 0.6 KB
+  c0     <app-cart-badge> rendered 0.3 ms  sent 0.2 KB, patched 0.2 ms
+  c1     <app-add-to-cart> rendered 0.4 ms  sent 0.4 KB, patched 0.3 ms
+  c2     <app-add-to-cart> rendered 0.4 ms  unchanged
 ```
 
 ## Inspecting a component
 
-`live.inspect('c0')` in the console prints what a component holds on the server: its selector and class, its inputs, its state, its children, the number of its timers, and the classes of the tab's scoped services (not their content). Top-level components are `c0`, `c1`, … in page order; a child's ID is on its tag as `data-live-id` (`c0.1`).
+`live.inspect('c0')` in the console prints what a component holds on the server: its selector and class, its inputs, its state, its children, the number of its timers, and the classes of the tab's scoped services (not their content). Top-level components are `c0`, `c1`, … in page order (on the bakery's catalog `c0` is the cart badge in the header, then one `AddToCart` per product); a child's ID is on its tag as `data-live-id` (`c0.1`).
 
 ## Warnings
 

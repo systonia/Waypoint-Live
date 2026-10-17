@@ -4,13 +4,13 @@ description: One part of Live per page, with examples that run as they are.
 order: 10
 ---
 
-Each guide covers one part of Live, with complete components: a class, its template and, where it helps, the PHPUnit test that drives it. The examples were run with [`Testing\Tab`](testing.md) against the package. The [reference](../reference/index.md) lists every public class and method.
+Each guide covers one part of Live, with complete components: a class, its template and, where it helps, the PHPUnit test that drives it. The examples come from [Sonnenkorn](https://github.com/systonia/Waypoint-Bakery), the made-up bakery that is the example app of Waypoint and Live: its shop, cart, checkout, order board and stock are live components in `src/Components`, with their tests in `tests/Components`. Where the bakery has no case for a part of Live, the guide shows a small component of the same shop; those were run with [`Testing\Tab`](testing.md) against the package. The [reference](../reference/index.md) lists every public class and method.
 
 Building components:
 
 - [Components](components.md): `#[Component]`, selector and template, state, inputs, lifecycle, components of a plugin
 - [Templates](templates.md): Waypoint's template syntax in a component, `{{ }}`, class names, `Html` for trusted markup
-- [Events and actions](events.md): `data-on-*`, `data-arg`, bound calls like `remove($task)`, what the browser can call
+- [Events and actions](events.md): `data-on-*`, `data-arg`, bound calls like `remove($line->product)`, what the browser can call
 - [Child components and inputs](children.md): placing components in templates, keys, closures as callbacks
 - [Forms and binding](forms.md): `data-on-submit`, fields that follow the server, validation
 - [Services](services.md): `#[Inject]`, `#[Scoped]` services per tab, what an app-wide service may inject

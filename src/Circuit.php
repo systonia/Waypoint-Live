@@ -15,9 +15,9 @@ use Waypoint\Support\FiberLocal;
 
 /**
  * @internal One browser tab's components on the server, for as long as its WebSocket is open. Messages from the browser
- * (JSON): `{"t":"mount","id":"c0","c":"app-counter","p":{...}}` creates a top-level component with its inputs,
- * `{"t":"call","id":"c0.1","m":"increment","a":[...]}` calls a method its template wires up, on a top-level
- * component or a child; `"m":"remove~3f0c…"` one the template bound to arguments (`data-on-click="remove($item)"`). After a change every top-level component renders; the changed ones go back as `{"id","html"}`;
+ * (JSON): `{"t":"mount","id":"c0","c":"app-add-to-cart","p":{...}}` creates a top-level component with its inputs,
+ * `{"t":"call","id":"c0.1","m":"add","a":[...]}` calls a method its template wires up, on a top-level
+ * component or a child; `"m":"remove~3f0c…"` one the template bound to arguments (`data-on-click="remove($line->product)"`). After a change every top-level component renders; the changed ones go back as `{"id","html"}`;
  * a failure as `{"id","error":true}` without details. The circuit keeps running either way.
  */
 final class Circuit

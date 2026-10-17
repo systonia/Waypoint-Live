@@ -8,9 +8,9 @@ use Attribute;
  * Marks a class as a live component, whose state stays on the server while its template shows in the browser.
  *
  *     #[Component]
- *     final class CitySearch { public string $query = ''; public function search(string $query): void { ... } }
+ *     final class AddToCart { #[Input] public int $product = 0; public function add(): void { ... } }
  *
- * The selector is `app-` and the class name in kebab case (`app-city-search`), the template
+ * The selector is `app-` and the class name in kebab case (`app-add-to-cart`), the template
  * `<ClassName>.Template.php` next to the class's file. Both can be given, the template path relative to the class's
  * file:
  *
@@ -19,8 +19,9 @@ use Attribute;
  *         template: 'templates/Cart.php'
  *     )]
  *
- * Views place the component with `<app-city-search></app-city-search>` or `$this->live('app-city-search')`; the
- * browser only ever sees the selector. A plugin's components name their selector, so that they never meet an app's.
+ * Views place the component with `<app-add-to-cart product="3"></app-add-to-cart>` or
+ * `$this->live('app-add-to-cart', ['product' => 3])`; the browser only ever sees the selector. A plugin's components
+ * name their selector, so that they never meet an app's.
  */
 #[Attribute(Attribute::TARGET_CLASS)]
 final class Component
