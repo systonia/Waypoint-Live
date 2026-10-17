@@ -108,7 +108,10 @@ Templates also take directives, mixed with plain PHP as you like:
 - `@if (...)`, `@elseif (...)`, `@else`, `@endif`, `@foreach (...)`, `@endforeach`. `@@` prints an `@`.
 - A directive starts a line or follows whitespace or `>`, so `info@example.com`, `@media` in CSS and
   `@click` stay text. Inside `<?php ?>` nothing is a directive.
-- `@code ... @endcode` holds PHP, as `<?php ... ?>`: `@code $order = $this->order() @endcode`.
+- `@code ... @endcode` holds PHP, as `<?php ... ?>`: `@code $order = $this->order() @endcode`. Neither may
+  declare anything (`use`, `namespace`, `declare`, a named function or class) or hold a `break` outside a loop,
+  a `yield` outside a function or an assignment to `$this`: PHP would refuse those with a fatal error at the
+  first render, so the template does not compile.
 - A template resolves class names as its component's class file does: same namespace, same `use` statements.
   `@use (App\Ordering\OrderStatus)` or `@use (App\Ordering\Pickup as Slot)` adds one for the template.
 - `<li class="row" @class.late="$order->late">` adds `late` to the class while the condition holds; the name

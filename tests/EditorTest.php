@@ -196,4 +196,17 @@ final class EditorTest extends TestCase
             $this->problems(self::FIXTURES . '/Item.Template.php', "<p>\n\n<?php if (\$this->name): ?>\n<?= \$this->name) ?>\n<?php endif ?>"),
         );
     }
+
+    public function testPhpThatPhpRefusesToCompileIsReportedWithoutRunningIt(): void
+    {
+        // Evaluated, these were fatal errors that ended the editor's process
+        $this->assertSame(
+            ["2 error: use in a template: it has the imports of its component's class file, and @use (App\\Status) adds one"],
+            $this->problems(self::FIXTURES . '/Item.Template.php', "<p>x</p>\n@code use Waypoint\\Live\\Input; @endcode\n"),
+        );
+        $this->assertSame(
+            ['1 error: A named function in a template is declared again on the next render, which PHP refuses: use a closure or a method of the component'],
+            $this->problems(self::FIXTURES . '/Item.Template.php', "@code function fmt(\$x) { return \$x; } @endcode\n{{ fmt(1) }}"),
+        );
+    }
 }

@@ -205,7 +205,54 @@ final class DirectivesTest extends TestCase
         $this->assertSame(['1: @use (App\\Missing): there is no class, enum, interface or trait App\\Missing'], self::problems('@use (App\\Missing)'));
         $this->assertSame('warning', $missing[0]['severity']);
         // Inside @code it is PHP; @user in a text is no typo
-        $this->assertSame([], (new Directives('@code use ($a) @endcode Hi @user'))->problems);
+        $this->assertSame([], (new Directives("@code \$a = '@use (A)'; @endcode Hi @user"))->problems);
+    }
+
+    public function testPhpThatWouldBeAFatalErrorOnRenderIsRefused(): void
+    {
+        // Each of them ends the worker in eval, which cannot catch a fatal error of PHP's compiler
+        $this->assertSame([
+            "2: use in a template: it has the imports of its component's class file, and @use (App\\Status) adds one",
+            '3: A named function in a template is declared again on the next render, which PHP refuses: use a closure or a method of the component',
+            '4: A class in a template is declared again on the next render, which PHP refuses: declare it in a file of its own',
+            '5: An enum in a template is declared again on the next render, which PHP refuses: declare it in a file of its own',
+            "6: namespace in a template: it has the namespace of its component's class",
+            '7: declare in a template: PHP takes it only at the start of a file',
+            '8: break outside a loop: PHP refuses it before the template runs',
+            '9: continue 2: only 1 loop is around it',
+            '10: break takes a positive whole number of loops, or none',
+            '11: break outside a loop: PHP refuses it before the template runs',
+            '12: yield outside a function: a template is no generator',
+            '13: $this is the component: a template cannot assign or unset it',
+        ], self::problems(implode("\n", [
+            '<p>',
+            '@code use Waypoint\\Live\\Input; @endcode',
+            '@code function fmt($x) { return $x; } @endcode',
+            '<?php class Row {} ?>',
+            '<?php enum State {} ?>',
+            '<?php namespace App; ?>',
+            '<?php declare(strict_types=1); ?>',
+            '@if ($a) <?php break ?> @endif',
+            '@foreach ($a as $b) <?php continue 2 ?> @endforeach',
+            '<?php foreach ($a as $b) { break $b; } ?>',
+            '<?php $f = function () { break; }; ?>',
+            '<?php yield 1; ?>',
+            '<?php $this = null; ?>',
+        ])));
+        // What is fine: loops in every syntax, closures, methods of an anonymous class, ::class
+        $this->assertSame([], self::problems(implode("\n", [
+            '@foreach ($a as $b) <?php if ($b) break; ?> @endforeach',
+            '<?php foreach ($a as $b) { if ($b) { continue; } } ?>',
+            '<?php for ($i = 0; $i < 3; $i++) break; ?>',
+            '<?php do { break; } while (false); ?>',
+            '<?php while (true): break; endwhile ?>',
+            '<?php switch ($a): case 1: break; endswitch ?>',
+            '<?php $f = function () use ($a) { foreach ($a as $b) { yield $b; } }; ?>',
+            '<?php $o = new class { use Countable; public function f(): void {} }; $c = Row::class; $this->a = 1; ?>',
+        ])));
+        // A template compiles only without them
+        $this->expectException(InvalidArgumentException::class);
+        Template::compile('<?php break ?>', []);
     }
 
     public function testConditionalClassesGoIntoTheClassAttribute(): void

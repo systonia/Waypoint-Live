@@ -2,7 +2,7 @@
 
 namespace Waypoint\Live;
 
-use CompileError;
+use ParseError;
 use ReflectionClass;
 
 /**
@@ -87,11 +87,11 @@ final class Problems
     private static function syntax(string $source, array $selectors, string $class): array
     {
         try {
-            // Compiled only: `return` comes first, so nothing of it runs. The compiler keeps the lines.
-            // ponytail: a function declared in a template would be declared here too
-            eval(Template::compile($source, $selectors, class: $class, first: 'return; '));
+            // Parsed only, never run or compiled: what PHP would refuse when compiling, the compiler refused
+            // already (Directives). The compiled code keeps the template's lines.
+            token_get_all('<?php ' . Template::compile($source, $selectors, class: $class), TOKEN_PARSE);
             return [];
-        } catch (CompileError $e) {
+        } catch (ParseError $e) {
             return [['line' => $e->getLine(), 'message' => $e->getMessage(), 'severity' => 'error']];
         }
     }

@@ -55,6 +55,7 @@ final class Directives
         }
         $this->tags();
         $this->blocks();
+        $this->statements();
     }
 
     /** The template as plain PHP, line for line. */
@@ -427,6 +428,150 @@ final class Directives
             $this->problems[] = ['line' => $line, 'message' => "@$block has no @end$block", 'severity' => 'error'];
         }
         usort($this->problems, static fn (array $a, array $b) => $a['line'] <=> $b['line']);
+    }
+
+    /**
+     * PHP that every render would run into a fatal error eval cannot catch, refused before: imports, namespaces and
+     * declare (the template has its component's), named functions and classes (declared again on the second
+     * render), break and continue outside a loop, yield outside a function, and assignments to $this.
+     */
+    private function statements(): void
+    {
+        $tokens = [];
+        $line = 1;
+        foreach (token_get_all($this->compile()) as $token) {
+            $line = is_array($token) ? $token[2] : $line;
+            if (!is_array($token) || !in_array($token[0], [T_WHITESPACE, T_COMMENT, T_DOC_COMMENT], true)) {
+                $tokens[] = [is_array($token) ? $token[0] : $token, is_array($token) ? $token[1] : $token, $line];
+            }
+        }
+        // What each open { or alternative syntax belongs to: 'loop', 'function', 'class' or 'block'
+        $stack = [];
+        $pending = null;
+        $afterDo = false;
+        /** @var array<int, string> $opens What the ) at an index opens: the condition of a loop ends there */
+        $opens = [];
+        $assignments = ['=', T_PLUS_EQUAL, T_MINUS_EQUAL, T_MUL_EQUAL, T_DIV_EQUAL, T_CONCAT_EQUAL, T_MOD_EQUAL, T_AND_EQUAL, T_OR_EQUAL, T_XOR_EQUAL, T_SL_EQUAL, T_SR_EQUAL, T_POW_EQUAL, T_COALESCE_EQUAL, T_INC, T_DEC];
+        foreach ($tokens as $i => [$id, $text, $at]) {
+            $previous = $tokens[$i - 1][0] ?? T_OPEN_TAG;
+            $next = $tokens[$i + 1][0] ?? null;
+            $wasDo = $afterDo;
+            $afterDo = false;
+            $inClass = end($stack) === 'class';
+            $message = match (true) {
+                $id === T_USE && !$inClass && $previous !== ')' => 'use in a template: it has the imports of its component\'s class file, and @use (App\\Status) adds one',
+                $id === T_NAMESPACE => 'namespace in a template: it has the namespace of its component\'s class',
+                $id === T_DECLARE => 'declare in a template: PHP takes it only at the start of a file',
+                $id === T_FUNCTION && !$inClass && ($next === T_STRING || ($next === '&' && ($tokens[$i + 2][0] ?? null) === T_STRING)) => 'A named function in a template is declared again on the next render, which PHP refuses: use a closure or a method of the component',
+                in_array($id, [T_INTERFACE, T_TRAIT, T_ENUM], true) || ($id === T_CLASS && !in_array($previous, [T_DOUBLE_COLON, T_NEW], true)) => (in_array(strtolower($text), ['enum', 'interface'], true) ? 'An' : 'A') . " $text in a template is declared again on the next render, which PHP refuses: declare it in a file of its own",
+                in_array($id, [T_YIELD, T_YIELD_FROM], true) && !in_array('function', $stack, true) => 'yield outside a function: a template is no generator',
+                $id === T_VARIABLE && $text === '$this' && (in_array($next, $assignments, true) || in_array($previous, [T_AS, T_INC, T_DEC, T_GLOBAL, T_STATIC, T_UNSET], true) || ($previous === '(' && ($tokens[$i - 2][0] ?? null) === T_UNSET) || ($previous === '&' && ($tokens[$i - 2][0] ?? null) === T_AS)) => '$this is the component: a template cannot assign or unset it',
+                in_array($id, [T_BREAK, T_CONTINUE], true) => self::loops($text, $stack, $tokens[$i + 1] ?? null),
+                default => null,
+            };
+            if ($message !== null) {
+                $this->problems[] = ['line' => $at, 'message' => $message, 'severity' => 'error'];
+            }
+            if ($id === T_DO) {
+                $pending = 'do';
+                continue;
+            }
+            // The while of do { } while () opens nothing. Alternative syntax opens with a colon; a body without
+            // braces is a loop up to its ;
+            if (in_array($id, [T_FOR, T_FOREACH, T_SWITCH], true) || ($id === T_WHILE && !$wasDo)) {
+                $close = self::closing($tokens, $i + 1);
+                $opens[$close] = match ($tokens[$close + 1][0] ?? null) {
+                    '{' => 'brace',
+                    ':' => 'loop',
+                    default => 'statement',
+                };
+                continue;
+            }
+            match (true) {
+                $id === T_FUNCTION => $pending = 'function',
+                $id === T_CLASS && $previous === T_NEW => $pending = 'class',
+                $id === '{' => [$stack[] = $pending ?? 'block', $pending = null],
+                $id === T_CURLY_OPEN || $id === T_DOLLAR_OPEN_CURLY_BRACES => $stack[] = 'block',
+                $id === '}' => $afterDo = array_pop($stack) === 'do',
+                in_array($id, [T_ENDFOR, T_ENDFOREACH, T_ENDWHILE, T_ENDSWITCH], true) => array_pop($stack),
+                $id === ';' || $id === T_CLOSE_TAG => $pending = $pending === 'function' ? null : $pending,
+                default => null,
+            };
+            if ($id === ';' || $id === T_CLOSE_TAG) {
+                self::endStatements($stack);
+            }
+            // After the ) of a loop's condition
+            $kind = $opens[$i] ?? null;
+            unset($opens[$i]);
+            if ($kind === 'brace') {
+                $pending = 'loop';
+            } elseif ($kind !== null) {
+                $stack[] = $kind;
+            }
+        }
+    }
+
+    /**
+     * Why a break or continue can never run where it stands, or null: its number of loops is more than there are
+     * around it in the template, or no number.
+     *
+     * @param list<string> $stack
+     * @param array{int|string, string, int}|null $next
+     */
+    private static function loops(string $keyword, array $stack, ?array $next): ?string
+    {
+        $keyword = strtolower($keyword);
+        $levels = $next !== null && $next[0] === T_LNUMBER ? (int) $next[1] : (in_array($next[0] ?? null, [';', T_CLOSE_TAG], true) ? 1 : 0);
+        if ($levels < 1) {
+            return "$keyword takes a positive whole number of loops, or none";
+        }
+        $loops = 0;
+        foreach (array_reverse($stack) as $kind) {
+            if ($kind === 'function' || $kind === 'class') {
+                break;
+            }
+            $loops += in_array($kind, ['loop', 'do', 'statement'], true) ? 1 : 0;
+        }
+        if ($loops >= $levels) {
+            return null;
+        }
+        return $loops === 0 ? "$keyword outside a loop: PHP refuses it before the template runs" : "$keyword $levels: only $loops " . ($loops === 1 ? 'loop is' : 'loops are') . ' around it';
+    }
+
+    /**
+     * The index of the ) that closes the ( at $i, or $i - 1 if there is none.
+     *
+     * @param list<array{int|string, string, int}> $tokens
+     */
+    private static function closing(array $tokens, int $i): int
+    {
+        if (($tokens[$i][0] ?? null) !== '(') {
+            return $i - 1;
+        }
+        $depth = 0;
+        for (; isset($tokens[$i]); $i++) {
+            $depth += match ($tokens[$i][0]) {
+                '(' => 1,
+                ')' => -1,
+                default => 0,
+            };
+            if ($depth === 0) {
+                return $i;
+            }
+        }
+        return $i - 1;
+    }
+
+    /**
+     * A ; ends the loops whose body is that one statement.
+     *
+     * @param list<string> $stack
+     */
+    private static function endStatements(array &$stack): void
+    {
+        while (end($stack) === 'statement') {
+            array_pop($stack);
+        }
     }
 
     /** Whether PHP code ends in a block comment it never closes; it would run on through what follows. */

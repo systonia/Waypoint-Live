@@ -197,6 +197,7 @@ On one line: `@code $order = $this->order() @endcode`. The last statement needs 
 
 - The body is PHP only: `{{ }}` and `@if` inside it are PHP text, not directives. It ends at the first `@endcode` that is not inside one of its strings or comments.
 - A `?>` in the body would end the PHP before `@endcode` and keeps the template from compiling. So do an `@code` without `@endcode`, an `@endcode` without `@code` and a `/*` without `*/`. An empty `@code` gets a warning.
+- A template runs on every render, so it cannot declare anything. A `use`, `namespace` or `declare`, a named `function`, `class`, `interface`, `trait` or `enum`, a `break` or `continue` outside a loop, a `yield` outside a function and an assignment to `$this` keep the template from compiling, in `@code` and in `<?php ?>` alike, with the line they are on. PHP would refuse them only when the template first renders, with an error that ends the worker. A closure (`$format = fn ($n) => ...`) or a method of the component does what a function would; `@use` imports a class.
 - A value the template needs is best a property or method of the component: typed, and seen by the editor and PHPStan without help. `@code` is for small helpers of the markup. When the template only needs a yes or no, a method says it best: `@if ($order->status->isPending())`.
 
 ## Class names in a template
