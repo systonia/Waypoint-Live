@@ -64,7 +64,8 @@ The selector is `app-` and the class name in kebab case (`CitySearch` is `<app-c
    as an object, files included) call the
    component's method. `data-on-click="remove($item)"` passes arguments of any type, objects included: they
    stay on the server, the browser only gets an ID for the call. What the event brings comes after them, so
-   `data-on-input="rename($item)"` calls `rename($item, $value)`. Use `'` for strings inside the attribute. After each call the template renders again, and the client patches the new HTML in
+   `data-on-input="rename($item)"` calls `rename($item, $value)`. Use `'` for strings inside the attribute. A call keeps its ID
+   across renders; an enum case or an object of a `readonly` class keeps it even when the render builds it again. After each call the template renders again, and the client patches the new HTML in
    place. The focused field keeps what is being typed.
 6. `#[Every(1.0)]` on a method runs it on a timer and pushes a render. Timers stop when the tab closes.
 

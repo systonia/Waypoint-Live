@@ -643,22 +643,55 @@ final class Circuit
     }
 
     /**
-     * Values by value, objects by a number the circuit never gives again: PHP reuses an object's
-     * spl_object_id once it is freed, and a late click on a removed item would hit the item that got its id.
+     * Values by value. An enum case, or an object that cannot change (a readonly class, or one whose properties are
+     * all readonly), by its class and its properties: the same row built again by the next render is the same.
+     * Any other object by a number the circuit never gives again: PHP reuses an object's spl_object_id once it is
+     * freed, and a late click on a removed item would hit the item that got its id.
+     *
+     * @param array<int, true> $inside The objects whose properties are being read, by spl_object_id: against a cycle
      */
-    private function identity(mixed $value): string
+    private function identity(mixed $value, array $inside = []): string
     {
+        if ($value instanceof \UnitEnum) {
+            return 'e' . serialize($value::class . '::' . $value->name);
+        }
         if (is_object($value)) {
-            return 'o' . ($this->objects[$value] ??= $this->nextObject++) . ';';
+            $properties = isset($inside[spl_object_id($value)]) ? null : self::immutable($value);
+            if ($properties === null) {
+                return 'o' . ($this->objects[$value] ??= $this->nextObject++) . ';';
+            }
+            return 'v' . serialize($value::class) . $this->identity($properties, $inside + [spl_object_id($value) => true]);
         }
         if (!is_array($value)) {
             return serialize($value);
         }
         $identity = '[';
         foreach ($value as $key => $item) {
-            $identity .= serialize($key) . $this->identity($item);
+            $identity .= serialize($key) . $this->identity($item, $inside);
         }
         return $identity . ']';
+    }
+
+    /**
+     * The properties of an object that cannot change after its constructor, by name, or null for any other.
+     *
+     * @return array<string, mixed>|null
+     */
+    private static function immutable(object $object): ?array
+    {
+        $reflection = new ReflectionObject($object);
+        $properties = array_filter($reflection->getProperties(), static fn (\ReflectionProperty $p) => !$p->isStatic());
+        if ($object instanceof Closure || (!$reflection->isReadOnly() && ($properties === [] || !array_all($properties, static fn (\ReflectionProperty $p) => $p->isReadOnly())))) {
+            return null;
+        }
+        $values = [];
+        foreach ($properties as $property) {
+            if (!$property->isInitialized($object)) {
+                return null;
+            }
+            $values[$property->getDeclaringClass()->getName() . '::' . $property->getName()] = $property->getValue($object);
+        }
+        return $values;
     }
 
     private function remove(Node $node): void

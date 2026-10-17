@@ -121,7 +121,7 @@ A click sends that ID back, and the server calls `remove()` with the very `Task`
 
 - **What the event brings comes after the bound arguments.** `data-on-input="rename($task)"` calls `rename($task, $value)`; `data-on-change="toggle($task)"` on a checkbox calls `toggle($task, true)`, and a method that takes no further parameter ignores it.
 - **Strings inside the attribute use single quotes**, since a `"` ends the attribute: `data-on-click="move($task, 'done')"`.
-- **The same call gets the same ID in every render.** A list that is reordered keeps its IDs; a removed item takes its ID along.
+- **The same call gets the same ID in every render.** Values count by value. An enum case, and an object that cannot change (a `readonly` class, or one whose properties are all `readonly`), count by class and properties, so a row that every render builds again from the database keeps its ID. Any other object counts as that very object: a list that is reordered keeps its IDs, a removed item takes its ID along, and an object built again by the next render gets a new ID.
 - **A call stays valid for two renders.** The server keeps the bound calls of the last two renders of each component, so a click that was on its way during a render still arrives. A click on an item that is gone since then does nothing.
 
 ## After an action

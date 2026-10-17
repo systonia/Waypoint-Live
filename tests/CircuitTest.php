@@ -46,7 +46,7 @@ final class CircuitTest extends TestCase
 
     private function plugin(bool $dev = false): LivePlugin
     {
-        $live = new LivePlugin([Counter::class, ItemList::class, Item::class, BasketButton::class, BasketBadge::class, Fragile::class, Uploader::class, Visitor::class, Bouncer::class, Chat::class, Shop::class, Ticker::class, \Waypoint\Live\Tests\Fixtures\Gauge::class]);
+        $live = new LivePlugin([Counter::class, ItemList::class, Item::class, BasketButton::class, BasketBadge::class, Fragile::class, Uploader::class, Visitor::class, Bouncer::class, Chat::class, Shop::class, Ticker::class, \Waypoint\Live\Tests\Fixtures\Gauge::class, \Waypoint\Live\Tests\Fixtures\Palette::class]);
         $container = new Container();
         $container->set(new Label('fine'));
         $container->set(new Room());
@@ -264,6 +264,25 @@ final class CircuitTest extends TestCase
         $circuit->handle($this->message(['t' => 'call', 'id' => 'c0', 'm' => 'remove', 'a' => []]));
         $this->assertSame([['id' => 'c0', 'error' => true]], $this->sent);
         $this->assertCount(1, $this->reported);
+    }
+
+    public function testValuesThatCannotChangeKeepTheirIdsWhenEveryRenderBuildsThemAgain(): void
+    {
+        $circuit = $this->circuit();
+        $circuit->handle($this->message(['t' => 'mount', 'id' => 'c0', 'c' => 'test-palette', 'p' => []]));
+        preg_match_all('/data-on-click="(\w+~\w+)"/', $this->sent[0]['html'], $first);
+
+        // Two renders with nothing changed: new Shade objects, the same IDs, so nothing goes to the browser
+        $circuit->changed();
+        $circuit->changed();
+        $this->assertCount(1, $this->sent);
+
+        // And a click on the first render's ID still hits its shade, and the enum case its case
+        $circuit->handle($this->message(['t' => 'call', 'id' => 'c0', 'm' => $first[1][1], 'a' => []]));
+        $this->assertStringContainsString('<p>blue</p>', end($this->sent)['html']);
+        $circuit->handle($this->message(['t' => 'call', 'id' => 'c0', 'm' => $first[1][2], 'a' => []]));
+        $this->assertStringContainsString('<p>Calm</p>', end($this->sent)['html']);
+        $this->assertSame([], $this->reported);
     }
 
     public function testALateClickOnARemovedItemNeverHitsAnItemCreatedLater(): void
