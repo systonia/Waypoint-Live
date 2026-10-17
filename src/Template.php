@@ -257,7 +257,7 @@ final class Template
         return null;
     }
 
-    /** @internal What a compiled `<?= ?>` calls: everything escaped, except Html. */
+    /** @internal What a compiled `<?= ?>` calls: everything escaped, except a Waypoint\Html. */
     public static function escape(mixed ...$values): string
     {
         $html = '';
@@ -265,7 +265,7 @@ final class Template
             if (!is_scalar($value) && $value !== null && !$value instanceof Stringable) {
                 throw new TypeError('A template can only print scalars and Stringable, not ' . get_debug_type($value));
             }
-            $html .= $value instanceof Html ? (string) $value : htmlspecialchars((string) $value, ENT_QUOTES | ENT_SUBSTITUTE);
+            $html .= $value instanceof \Waypoint\Html ? (string) $value : htmlspecialchars((string) $value, ENT_QUOTES | ENT_SUBSTITUTE);
         }
         return $html;
     }

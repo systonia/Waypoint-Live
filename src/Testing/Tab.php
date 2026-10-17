@@ -65,7 +65,7 @@ final class Tab
     /** A tab of $app, once attach() has booted its plugins; $request is the connection's (cookies, the user). */
     public static function for(App $app, ?Request $request = null): self
     {
-        return new self($app->get(LivePlugin::class) ?? throw new LogicException('Tab::for() needs an app with LivePlugin, after attach()'), $request);
+        return new self($app->find(LivePlugin::class) ?? throw new LogicException('Tab::for() needs an app with LivePlugin, after attach()'), $request);
     }
 
     /**
@@ -75,7 +75,7 @@ final class Tab
      */
     public static function page(App $app, string $selector, array $inputs = [], ?Request $request = null): string
     {
-        return Circuit::page($app->get(LivePlugin::class) ?? throw new LogicException('Tab::page() needs an app with LivePlugin, after attach()'), $selector, $inputs, '', $request);
+        return Circuit::page($app->find(LivePlugin::class) ?? throw new LogicException('Tab::page() needs an app with LivePlugin, after attach()'), $selector, $inputs, '', $request);
     }
 
     /** Puts a service, such as a fake, into this tab before its components are created, for the #[Scoped] class it is or extends. */

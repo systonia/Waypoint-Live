@@ -211,6 +211,8 @@ Live finds these tags in every HTML response after it was rendered, and replaces
 <?= $this->live('app-task-list', ['title' => 'Home']) ?>
 ```
 
+It returns a `Waypoint\Html`, so the view's escaping `<?= ?>` prints the component's markup as it is.
+
 A page's inputs travel through the browser and back when the WebSocket connects, so they must be JSON values: numbers, strings, booleans, `null` and arrays of them. An object is refused with an error; pass its ID and let the component load it. A template that places a child component can pass any value, objects and closures included ([Child components](children.md)).
 
 The rendered tag looks like this; the browser finds the component by `data-live` and creates it again from `data-inputs`:

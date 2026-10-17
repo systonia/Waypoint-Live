@@ -2,21 +2,11 @@
 
 namespace Waypoint\Live;
 
-use Stringable;
-
 /**
- * Markup a template prints as it is: `<?= $this->region('main') ?>` where region() returns Html. Only for HTML
- * that was built safely, such as another template's output; anything from a user stays a string and is escaped.
+ * Markup a template prints as it is: the same as `Waypoint\Html`, which templates and views print as it is too.
+ * New code uses `Waypoint\Html`; this name stays for templates written before it. Only for HTML that was built
+ * safely, such as another template's output; anything from a user stays a string and is escaped.
  */
-final readonly class Html implements Stringable
+final readonly class Html extends \Waypoint\Html
 {
-    /** @param string $html Markup that is safe as it is: escape everything from a user before it goes in */
-    public function __construct(private string $html)
-    {
-    }
-
-    public function __toString(): string
-    {
-        return $this->html;
-    }
 }

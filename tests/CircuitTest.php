@@ -627,7 +627,10 @@ final class CircuitTest extends TestCase
         $this->assertInstanceOf(\Waypoint\Http\MiddlewareBase::class, $middleware);
         $middleware->handle(Request::fromParts('GET', '/', cookies: ['who' => 'dee']), new Response(), static fn () => null);
 
-        $this->assertStringContainsString('<p>dee</p>', ($live->helpers()['live'])('test-visitor'));
+        $html = ($live->helpers()['live'])('test-visitor');
+        $this->assertInstanceOf(\Waypoint\Html::class, $html);
+        // A view escapes what an echo tag prints: the markup of the component stays markup
+        $this->assertStringContainsString('<p>dee</p>', \Waypoint\Http\View::escape($html));
     }
 
     public function testSelectorAndTemplateFollowTheClassName(): void
@@ -672,5 +675,6 @@ final class CircuitTest extends TestCase
     public function testHtmlIsPrintedAsItIsAndEverythingElseEscaped(): void
     {
         $this->assertSame('<b>bold</b>&lt;i&gt;', \Waypoint\Live\Template::escape(new \Waypoint\Live\Html('<b>bold</b>'), '<i>'));
+        $this->assertSame('<b>bold</b>', \Waypoint\Live\Template::escape(new \Waypoint\Html('<b>bold</b>')));
     }
 }

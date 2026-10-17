@@ -225,7 +225,7 @@ final class Circuit
             is_object($value) => '<' . $value::class . '>',
             is_array($value) => $depth > 3 ? '[…]' : array_map(static fn (mixed $item) => self::shown($item, $depth + 1), array_slice($value, 0, 50, true)),
             is_resource($value) => '<resource>',
-            is_float($value) && !is_finite($value) => (string) $value,
+            is_float($value) && !is_finite($value) => is_nan($value) ? 'NAN' : ($value > 0 ? 'INF' : '-INF'),
             default => $value,
         };
     }
@@ -247,8 +247,7 @@ final class Circuit
 
     private static function subject(Request $request): mixed
     {
-        $jwt = $request->jwt;
-        return is_array($jwt) ? $jwt['sub'] ?? null : (is_object($jwt) ? $jwt->sub ?? null : null);
+        return $request->jwt['sub'] ?? null;
     }
 
     /** @internal The tab's #[Scoped] services: Testing\Tab puts its fakes there */

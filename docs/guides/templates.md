@@ -16,7 +16,8 @@ A product card. The class:
 
 namespace App;
 
-use Waypoint\Live\{Component, Html, Input};
+use Waypoint\Html;
+use Waypoint\Live\{Component, Input};
 
 #[Component]
 final class ProductCard
@@ -91,13 +92,13 @@ With `name="Green <b>tea</b>"`, `stock="3"` and a two-line description whose sec
 
 - Strings, numbers and `Stringable` objects print escaped. `null` prints nothing, `true` prints `1`, `false` nothing.
 - An array or another object is an error (`A template can only print scalars and Stringable`), at the template's line.
-- A value of type [`Html`](../reference/Waypoint/Live/Html.md) prints as it is (below).
+- A value of type `Waypoint\Html` prints as it is (below).
 - `<?php echo $value ?>` prints **without** escaping. Use it only for markup that is already safe; `Html` says the same more clearly.
 - A `//` comment inside `<?= ?>` or `{{ }}` would also comment out what the compiler adds behind it: use `/* */` there. The template does not compile otherwise, and the editor and the checks report it.
 
 ### Html: markup you built yourself
 
-Whether a value prints raw depends on the value, never on how the template prints it. A method that returns [`Html`](../reference/Waypoint/Live/Html.md) is printed as it is, by `{{ }}` and `<?= ?>` alike:
+Whether a value prints raw depends on the value, never on how the template prints it. A method that returns `Waypoint\Html` is printed as it is, by `{{ }}` and `<?= ?>` alike:
 
 ```php
 private function description(): Html
@@ -107,7 +108,7 @@ private function description(): Html
 }
 ```
 
-`Html` is a promise that the markup is safe. Build it from escaped parts, as above, or from another template's output; anything that came from a user stays a string, so that it is escaped.
+`Html` is a promise that the markup is safe. Build it from escaped parts, as above, or from another template's output; anything that came from a user stays a string, so that it is escaped. Waypoint's views treat it the same way, so a method can hand the same `Html` to a view and to a template. `Waypoint\Live\Html` is a subclass of it, kept for templates written before `Waypoint\Html` existed.
 
 ## Comments
 
@@ -303,4 +304,4 @@ A template places other components by their tag, like a view does. `{{ }}` alone
 
 Every template is compiled when the first page uses a component, once all selectors are known, so that each template can expand the others' tags. A template that does not compile is an error then; in development a saved template is compiled again at once, and one that no longer compiles keeps its last working version until the mistake is fixed ([Development tools](development.md#hot-reload)).
 
-See also: [`Html`](../reference/Waypoint/Live/Html.md), [Events and actions](events.md), [Static analysis](static-analysis.md).
+See also: [Events and actions](events.md), [Static analysis](static-analysis.md).

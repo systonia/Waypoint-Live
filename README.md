@@ -78,7 +78,7 @@ plugin starts.
 `$this` is the component at runtime without any declaration, and in the editor too through `tenma lsp`
 (see In the editor). Without it, a first line `<?php /** @var \App\Counter $this */ ?>` tells the IDE.
 
-`<?= $value ?>` escapes every value except a `Waypoint\Live\Html`, which carries markup that was built safely
+`<?= $value ?>` escapes every value except a `Waypoint\Html`, which carries markup that was built safely
 (another template's output, say) and is printed as it is.
 
 ### Directives
@@ -103,7 +103,7 @@ Templates also take directives, mixed with plain PHP as you like:
 ```
 
 - `{{ expr }}` prints escaped, as `<?= ?>`; a lone `{{ expr }}` in a child tag's attribute passes the value itself.
-  A value of type `Waypoint\Live\Html` prints as it is (`$this->badge` above is one): whether markup is raw
+  A value of type `Waypoint\Html` prints as it is (`$this->badge` above is one): whether markup is raw
   depends on the value, never on how the template prints it. `{{/* */}}` is a comment.
 - `@if (...)`, `@elseif (...)`, `@else`, `@endif`, `@foreach (...)`, `@endforeach`. `@@` prints an `@`.
 - A directive starts a line or follows whitespace or `>`, so `info@example.com`, `@media` in CSS and

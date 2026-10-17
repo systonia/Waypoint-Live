@@ -300,9 +300,13 @@ final class LivePlugin extends PluginBase implements ViewHelper, ClientAsset, Re
         return new Scope($this->container);
     }
 
-    /** @param array<string, mixed> $inputs */
-    private function renderInPage(string $selector, array $inputs = []): string
+    /**
+     * `<?= $this->live('app-counter', $inputs) ?>` in a view: markup, which the view prints as it is.
+     *
+     * @param array<string, mixed> $inputs
+     */
+    private function renderInPage(string $selector, array $inputs = []): \Waypoint\Html
     {
-        return Circuit::page($this, $selector, $inputs, '', $this->page->current());
+        return new \Waypoint\Html(Circuit::page($this, $selector, $inputs, '', $this->page->current()));
     }
 }

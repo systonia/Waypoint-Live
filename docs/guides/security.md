@@ -40,7 +40,7 @@ A live component runs on the server with the app's full access to its services, 
 
 **Uploads.** Name and type of a file come from the browser. Never use the name as a path, and check the content before trusting the type ([Uploads](uploads.md)).
 
-**Markup.** `{{ }}` and `<?= ?>` escape everything except [`Html`](../reference/Waypoint/Live/Html.md). Wrap only markup you built safely in `Html`, and remember that `<?php echo $value ?>` prints without escaping.
+**Markup.** `{{ }}` and `<?= ?>` escape everything except `Waypoint\Html`. Wrap only markup you built safely in `Html`, and remember that `<?php echo $value ?>` prints without escaping.
 
 **Revocation.** `$request->jwt` is what the middlewares found when the WebSocket connected, and a WebSocket can stay open for hours. A component that must notice a logout or a revoked token at once asks its source again on every action.
 
