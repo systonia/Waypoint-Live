@@ -17,7 +17,7 @@ generated: true
 - [`Components`](Components.md) · final class: The app's live components: those given to LivePlugin, and those another plugin adds in its boot(), as `$container->get(Components::class)->add(Login::class)`.
 - [`Connection`](Connection.md) · final class: The browser connection of a circuit, for a component or a #[Scoped] service that injects it: the request the WebSocket came in with (its cookies, and $request->jwt as the app's middlewares left it), and a way to send the browser to another page.
 - [`Every`](Every.md) · final class: Runs the method every $seconds while the browser is connected and pushes a new render afterwards.
-- [`Html`](Html.md) · final readonly class: Markup a template prints as it is: `<?= $this->region('main') ?>` where region() returns Html.
+- [`Html`](Html.md) · final readonly class: Markup a template prints as it is: the same as `Waypoint\Html`, which templates and views print as it is too.
 - [`Input`](Input.md) · final class: A public property the page sets when it places the component: `$this->live('app-counter', ['count' => 3])`.
 - [`LiveOptions`](LiveOptions.md) · class: Live's options, set with `$app->configure(fn (LiveOptions $live) => $live->editor = '...')`.
 - [`LivePlugin`](LivePlugin.md) · final class: Register with `$app->plugin(new LivePlugin([Counter::class, Search::class]))`: classes with a #[Component] attribute, and only these can be created; the browser names them by selector.

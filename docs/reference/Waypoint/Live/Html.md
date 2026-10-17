@@ -1,6 +1,6 @@
 ---
 title: "Html"
-description: "Markup a template prints as it is: `<?= $this->region('main') ?>` where region() returns Html."
+description: "Markup a template prints as it is: the same as `Waypoint\\Html`, which templates and views print as it is too."
 order: 100
 generated: true
 ---
@@ -8,30 +8,11 @@ generated: true
 `Waypoint\Live\Html` · final readonly class · namespace [`Waypoint\Live`](index.md)
 
 ```php
-final readonly class Html implements \Stringable
+final readonly class Html extends \Waypoint\Html
 ```
 
-Implements [`Stringable`](https://www.php.net/manual/en/class.stringable.php)
+Extends `Waypoint\Html`
 
-Markup a template prints as it is: `<?= $this->region('main') ?>` where region() returns Html. Only for HTML
-that was built safely, such as another template's output; anything from a user stays a string and is escaped.
-
-## Methods
-
-### __construct()
-
-```php
-public function __construct(private readonly string $html)
-```
-
-**Parameters**
-
-- `$html` `string`: Markup that is safe as it is: escape everything from a user before it goes in
-
-### __toString()
-
-```php
-public function __toString(): string
-```
-
-**Returns** `string`
+Markup a template prints as it is: the same as `Waypoint\Html`, which templates and views print as it is too.
+New code uses `Waypoint\Html`; this name stays for templates written before it. Only for HTML that was built
+safely, such as another template's output; anything from a user stays a string and is escaped.
