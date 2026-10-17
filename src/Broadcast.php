@@ -74,10 +74,11 @@ final class Broadcast
     /** @internal */
     public function connect(Circuit $circuit): void
     {
-        // Once a tab connects: a subscription keeps the process running, which a script without a server must not
+        // Once a tab connects: a subscription keeps the process running, which a script without a server must not.
+        // Detached, it belongs to no request: one made in this tab's request would end when the tab closes.
         if (!$this->subscribed && self::acrossWorkers()) {
             $this->subscribed = true;
-            \Tenma::subscribe(self::CHANNEL, fn () => $this->changedHere());
+            \Tenma::detach(fn () => \Tenma::subscribe(self::CHANNEL, fn () => $this->changedHere()));
         }
         $this->circuits[$circuit] = true;
     }

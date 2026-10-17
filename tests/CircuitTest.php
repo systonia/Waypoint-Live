@@ -668,17 +668,84 @@ final class CircuitTest extends TestCase
         $this->assertTrue($this->circuit()->sameUser(Request::fromParts('GET', '/_live')));
     }
 
+    /**
+     * A Tenma with publish(), as far as Broadcast can tell: a subscription ends with the request it was made in,
+     * one made in Tenma::detach() lives on, and a subscription keeps its process running.
+     */
+    private static function fakeTenma(): void
+    {
+        eval(<<<'PHP'
+            function tenma_pubsub(): void {}
+
+            final class Tenma
+            {
+                public static ?int $request = null;
+
+                /** @var list<array{?int, callable}> request, callback */
+                public static array $subscriptions = [];
+
+                public static function subscribe(string $channel, callable $callback): void
+                {
+                    self::$subscriptions[] = [self::$request, $callback];
+                }
+
+                public static function detach(callable $work): void
+                {
+                    [$request, self::$request] = [self::$request, null];
+                    $work();
+                    self::$request = $request;
+                }
+
+                public static function publish(string $channel, string $message): void
+                {
+                    foreach (self::$subscriptions as [, $callback]) {
+                        $callback($message);
+                    }
+                }
+
+                public static function endRequest(int $request): void
+                {
+                    self::$subscriptions = array_values(array_filter(self::$subscriptions, fn (array $s) => $s[0] !== $request));
+                }
+            }
+            PHP);
+    }
+
     #[\PHPUnit\Framework\Attributes\RunInSeparateProcess]
     public function testTheBroadcastSubscribesOnlyOnceATabConnects(): void
     {
-        // A Tenma with publish(), as far as Broadcast can tell; a subscription keeps its process running
-        eval('function tenma_pubsub(): void {} final class Tenma { public static array $subscribed = []; public static function subscribe(string $channel, callable $callback): void { self::$subscribed[] = $channel; } }');
+        self::fakeTenma();
         $live = $this->plugin();
-        $this->assertSame([], \Tenma::$subscribed);
+        $this->assertSame([], \Tenma::$subscriptions);
 
         $this->circuit(live: $live);
         $this->circuit(live: $live);
-        $this->assertSame(['waypoint-live'], \Tenma::$subscribed);
+        $this->assertCount(1, \Tenma::$subscriptions);
+    }
+
+    #[\PHPUnit\Framework\Attributes\RunInSeparateProcess]
+    public function testTabsStillHearBroadcastsAfterTheFirstTabClosed(): void
+    {
+        self::fakeTenma();
+        $live = $this->plugin();
+        $mount = $this->message(['t' => 'mount', 'id' => 'c0', 'c' => 'test-chat', 'p' => []]);
+        \Tenma::$request = 1;
+        $first = $this->circuit(live: $live);
+        $first->handle($mount);
+        // The first tab navigates away: its WebSocket request ends, and what it started with it
+        $first->detach();
+        \Tenma::endRequest(1);
+
+        \Tenma::$request = 2;
+        $second = $this->circuit(live: $live);
+        $second->handle($mount);
+        \Tenma::$request = 3;
+        $third = $this->circuit(live: $live);
+        $third->handle($mount);
+        $this->sent = [];
+
+        $second->handle($this->message(['t' => 'call', 'id' => 'c0', 'm' => 'say', 'a' => ['hi']]));
+        $this->assertCount(2, $this->sent, 'the third tab renders the broadcast too');
     }
 
     public function testGuardsOfTheComponentAndItsActionsCheckTheConnectionsRequest(): void
