@@ -4,7 +4,7 @@ description: Read the request the WebSocket came in with, find the user from its
 order: 70
 ---
 
-The browser's WebSocket to `/_live` is a normal Waypoint route: the app's middlewares and guards run on its upgrade request, the JWT middleware fills `$request->jwt`, cookies arrive as usual. [`Connection`](../reference/Waypoint/Live/Connection.md) hands that request to the components of the tab.
+The browser's WebSocket to `/_live` is a normal Waypoint route: the app's middlewares and guards run on its upgrade request, the JWT middleware fills `$request->jwt`, cookies arrive as usual. It is no API operation, so the OpenAPI document leaves it out. [`Connection`](../reference/Waypoint/Live/Connection.md) hands that request to the components of the tab.
 
 ## Connection
 

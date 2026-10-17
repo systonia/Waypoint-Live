@@ -3,16 +3,17 @@
 namespace Waypoint\Live;
 
 use Throwable;
-use Waypoint\Attributes\{Controller, Get, Inject};
+use Waypoint\Attributes\{Controller, Get, Ignore, Inject};
 use Waypoint\Exceptions\ForbiddenException;
 use Waypoint\Http\{Request, Response};
 use Waypoint\Logger;
 
 /**
- * @internal The browser's WebSocket: one Circuit per connection. A normal route, so the app's middlewares and guards
+ * @internal The browser's WebSocket: one Circuit per connection, left out of the OpenAPI document. A normal route, so the app's middlewares and guards
  * run before the handover; the handler then runs with the request's context (request id in the log).
  */
 #[Controller]
+#[Ignore]
 final class LiveController
 {
     // ponytail: fixed per worker; options once an app needs others

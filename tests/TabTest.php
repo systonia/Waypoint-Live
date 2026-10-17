@@ -26,6 +26,12 @@ final class TabTest extends TestCase
         Waypoint::reset();
     }
 
+    public function testTheWebSocketRouteIsNoPartOfTheApi(): void
+    {
+        $spec = (new \Waypoint\OpenAPI\OpenAPIGenerator($this->app->getRouter()))->generate();
+        $this->assertArrayNotHasKey('/_live', $spec['paths'] ?? []);
+    }
+
     public function testClicksGoThroughTheTemplateAndTimersRunOnFakeTime(): void
     {
         $tab = Tab::for($this->app);
