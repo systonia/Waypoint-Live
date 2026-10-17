@@ -94,7 +94,8 @@ $form->submit('form', ['email' => 'anna@example.com', 'topics' => ['events']])
 
 - A field named `name[]` collects a list: `topics[]` above arrives as `['releases', 'events']`.
 - Any other name that occurs more than once keeps its last value. A checkbox group or a `<select multiple>` therefore needs a `[]` name.
-- What the browser leaves out of a form is missing here too: unchecked checkboxes, disabled fields, and the button that submitted it.
+- What the browser leaves out of a form is missing here too: unchecked checkboxes and disabled fields.
+- The button that submitted the form is in it with its `name` and `value`, as in a classic post: `<button name="as" value="draft">` and `<button name="as" value="public">` tell the method which was pressed.
 - An empty file input is left out; a file input sends an [`UploadedFile`](uploads.md), a list of them with `[]` and `multiple`.
 
 All values are strings (or files). Treat the array like any request body: check every field, and never trust the browser to send only the fields the template has. A forged message can send any array, or no array at all, so the type of the parameter matters: `array $form` refuses a string with a `TypeError`.

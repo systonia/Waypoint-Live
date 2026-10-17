@@ -476,7 +476,7 @@ In production none of this happens: the browser only learns that a component fai
   first (a network switch) may reconnect before that and start over.
 - A `//` comment inside `<?= ?>` breaks the template; use `/* */`.
 - `data-on-submit` sends the form as an object: `name[]` collects a list, any other repeated name (checkbox
-  group, `select multiple`) keeps its last value.
+  group, `select multiple`) keeps its last value. The button that submitted it is in with its name and value.
 - A file travels base64-encoded inside one WebSocket message: a third bigger than the file, at most
   `--max-body` (10 MB by default) per message, and at most 20 files per call.
 - An event sent while the connection is dying unnoticed (no ping yet) is lost.

@@ -181,11 +181,12 @@
         reader.readAsDataURL(file);
     });
 
-    // A form as an object: "photos[]" collects a list, an empty file input is left out. The fields are taken
-    // when the form is submitted; only reading the files waits.
-    const formObject = async (form) => {
+    // A form as an object: "photos[]" collects a list, an empty file input is left out, the button that
+    // submitted it is in with its name and value. The fields are taken when the form is submitted; only reading
+    // the files waits.
+    const formObject = async (form, submitter) => {
         const object = {};
-        for (const [name, value] of [...new FormData(form)]) {
+        for (const [name, value] of [...new FormData(form, submitter)]) {
             if (value instanceof File && value.name === '' && value.size === 0) continue;
             const entry = value instanceof File ? await encode(value) : value;
             if (!name.endsWith('[]')) {
@@ -209,7 +210,7 @@
 
     Waypoint.directive('data-on-submit', 'submit', (el, event) => {
         event.preventDefault();
-        call(el, 'data-on-submit', formObject(el).then((form) => [form]));
+        call(el, 'data-on-submit', formObject(el, event.submitter).then((form) => [form]));
     });
 
     const patchChildren = (target, html) => {

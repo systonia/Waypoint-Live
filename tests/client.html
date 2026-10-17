@@ -3,7 +3,7 @@
 <body>
 <app-a data-live data-inputs="{}"><input id="f"><button id="btn" data-on-click="go">go</button><input id="typed" data-on-input="search"></app-a>
 <app-b data-live data-inputs="{}"><form><input id="fa" name="a"><input id="fb" name="b"></form><input id="bound" value="ab"><textarea id="ta">x</textarea><select id="sel"><option>1</option><option selected>2</option></select></app-b>
-<app-c data-live data-inputs="{}"><form id="up" data-on-submit="save"><input name="title" value="Trip"><input id="ph" type="file" name="photos[]" multiple><input type="file" name="empty"></form><input id="one" type="file" data-on-change="pick"><div id="ignored" data-live-ignore><span>server</span></div><form id="mix" data-on-submit="mix"><input name="tags" value="a"><input name="tags[]" value="b"></form></app-c>
+<app-c data-live data-inputs="{}"><form id="up" data-on-submit="save"><input name="title" value="Trip"><input id="ph" type="file" name="photos[]" multiple><input type="file" name="empty"></form><input id="one" type="file" data-on-change="pick"><div id="ignored" data-live-ignore><span>server</span></div><form id="mix" data-on-submit="mix"><input name="tags" value="a"><input name="tags[]" value="b"></form><form id="pub" data-on-submit="post"><input name="title" value="Note"><button name="as" value="draft">Draft</button><button id="publish" name="as" value="public">Publish</button></form></app-c>
 <pre id="out"></pre>
 <script>
 const sent = []; let ws;
@@ -87,9 +87,14 @@ const $ = (id) => document.getElementById(id);
   $('mix').requestSubmit();
   await new Promise((r) => setTimeout(r, 100));
   check('name and name[] make one list', JSON.stringify(sent.find((m) => m.m === 'mix')?.a[0]) === '{"tags":["a","b"]}');
+  // The button that submitted the form goes along with its name and value
+  sent.length = 0;
+  $('pub').requestSubmit($('publish'));
+  await new Promise((r) => setTimeout(r, 100));
+  check('the pressed button is in the form', JSON.stringify(sent.find((m) => m.m === 'post')?.a[0]) === '{"title":"Note","as":"public"}');
   // An ignored element stays as the browser changed it, whatever the server renders
   $('ignored').firstElementChild.textContent = 'typed in the browser';
-  server({ id: 'c2', html: '<form id="up" data-on-submit="save"><input name="title" value="Trip"><input id="ph" type="file" name="photos[]" multiple><input type="file" name="empty"></form><input id="one" type="file" data-on-change="pick"><div id="ignored" data-live-ignore><span>server again</span></div><form id="mix" data-on-submit="mix"><input name="tags" value="a"><input name="tags[]" value="b"></form>' });
+  server({ id: 'c2', html: '<form id="up" data-on-submit="save"><input name="title" value="Trip"><input id="ph" type="file" name="photos[]" multiple><input type="file" name="empty"></form><input id="one" type="file" data-on-change="pick"><div id="ignored" data-live-ignore><span>server again</span></div><form id="mix" data-on-submit="mix"><input name="tags" value="a"><input name="tags[]" value="b"></form><form id="pub" data-on-submit="post"><input name="title" value="Note"><button name="as" value="draft">Draft</button><button id="publish" name="as" value="public">Publish</button></form>' });
   check('data-live-ignore keeps the browser\'s content', $('ignored').textContent === 'typed in the browser');
   // Errors: true only marks the component, details (dev) open the overlay, a repeat counts, a render closes it
   const overlay = () => document.querySelector('live-errors')?.shadowRoot;
