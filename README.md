@@ -232,7 +232,8 @@ done, for example after a login. Only a path of the site is a destination, never
 if the action throws afterwards, so a check can send a logged-out user to the login and stop the action; during
 the page's first render it is an error.
 
-`$request->jwt` is what the middlewares found when the WebSocket connected, not refreshed until a reconnect: a
+`$request->jwt` is what the middlewares found when the WebSocket connected, not refreshed until a reconnect.
+Once its `exp` has passed, the next mount or call closes the connection and the browser reconnects; a
 component that must notice a logout or a revoked token right away asks its source again on every action.
 
 ```php
@@ -325,8 +326,11 @@ components start over. It is never in a URL, a cookie or storage.
 
 - Only components listed in `LivePlugin` can be created, by selector; the browser never names a class.
 - The guards of a page's route do not protect its components: any browser that reaches `/_live` can mount any
-  listed component with any inputs. A component whose data or actions are not for everyone checks the user
-  itself, from its `Connection`: in what its template shows and in every action.
+  listed component with any inputs. `#[Authenticated]`, `#[Role]` and `#[Permissions]` on a component class
+  are checked when it is created and before every action, on a method before every call of it, against the
+  connection's request as for a route. A JWT whose `exp` has passed counts as signed out: the call is refused
+  and the connection closed, so the browser reconnects through the middlewares. A rule the attributes cannot
+  say (whose record it is) the component checks itself, from its `Connection`.
 - The browser can only call public methods that the template names in a `data-on-*` attribute. Any other
   public method stays out of reach, and so does one named only in commented-out markup (`<!-- -->`, `{{/* */}}`). A method the template calls with arguments (`remove($item)`) is reachable
   only through the IDs of the last two renders, with the arguments the template bound and at most the one value

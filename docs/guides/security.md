@@ -1,6 +1,6 @@
 ---
 title: Security model
-description: What the browser can and cannot do to a live component, and what every component has to check itself.
+description: What the browser can and cannot do to a live component, how guards protect components and actions, and what a component still checks itself.
 order: 150
 ---
 
@@ -24,17 +24,19 @@ A live component runs on the server with the app's full access to its services, 
 
 **Errors stay on the server.** In production the browser gets only `{"error": true}` and marks the component with `data-live-error`; messages, paths and stacks go to the log. The circuit keeps running, and one failing component does not hold back the others.
 
+**Guards hold on every call.** `#[Authenticated]`, `#[Role]` and `#[Permissions]` on a component class are checked when the component is created and before every action, those on a method before every call of it, against the connection's request and by the rules of a route's guards ([The connection and the user](connection.md#guards-on-components-and-actions)). A JWT that expired since the connection opened counts as signed out: the call is refused and the connection closed, so the browser connects again through the app's middlewares.
+
 **Parked components go back to the same user only.** A reconnecting browser gets its parked circuit back only if its JWT names the same `sub` ([Reconnects](reconnect.md#the-same-user-only)). The circuit's token is never in a URL, a cookie or storage.
 
 ## What every component checks itself
 
-**The user, in what it shows and in every action.** The guards of a page's route do not protect the components on that page: any browser that reaches `/_live` can mount any listed component with any inputs. A component whose data or actions are not for everyone finds the user in its [`Connection`](connection.md) and checks it in its template and in every action.
+**The user, where an attribute does not fit.** The guards of a page's route do not protect the components on that page: any browser that reaches `/_live` can mount any listed component with any inputs. A component whose data or actions are not for everyone carries `#[Authenticated]`, `#[Role]` or `#[Permissions]` itself. A rule the attributes cannot say, such as whose invoice a user may mark as paid, the component checks itself, from its [`Connection`](connection.md), in its template and in every action.
 
 **Inputs, like query parameters.** `#[Input]` values set by a page travel through the browser and come back when it connects. A user can change them. Never take an input as proof of who the user is or what they may see: `#[Input] public int $userId` is a hole; the user comes from the connection's request.
 
 **The one value from the browser.** The field's value, the form, `data-arg`: they come from the browser and can be forged, even for a click without `data-arg`. A method like `save(bool $publish = false)` can be called with `$publish` set by anyone who writes their own messages. Check it.
 
-**Types are converted, not checked.** Values from the browser are converted as in a PHP call without `strict_types`: `"7"` fills an `int`, `"false"` fills a `bool` as `true`. A value that cannot be converted is an error. Validate ranges and formats in the method.
+**Types are converted, ranges are not checked.** Values from the browser are converted to the parameter's type by the rules of `Waypoint\FromArray` (`"7"` fills an `int`, `"false"` a `bool` as `false`), and a value that does not fit is refused without a call ([Events](events.md#one-value-from-the-browser)). Validate ranges and formats in the method, or with the rule attributes of a `FromArray` DTO.
 
 **Forms.** A form arrives as an array whose keys and values the browser chose. Check every field you use, ignore the rest, and never write the array into a model as it is.
 
@@ -42,7 +44,7 @@ A live component runs on the server with the app's full access to its services, 
 
 **Markup.** `{{ }}` and `<?= ?>` escape everything except `Waypoint\Html`. Wrap only markup you built safely in `Html`, and remember that `<?php echo $value ?>` prints without escaping.
 
-**Revocation.** `$request->jwt` is what the middlewares found when the WebSocket connected, and a WebSocket can stay open for hours. A component that must notice a logout or a revoked token at once asks its source again on every action.
+**Revocation.** `$request->jwt` is what the middlewares found when the WebSocket connected, and a WebSocket can stay open for hours. Its expiry ends the connection, a logout or a revoked token does not: a component that must notice those at once asks its source again on every action.
 
 ## Resource limits
 

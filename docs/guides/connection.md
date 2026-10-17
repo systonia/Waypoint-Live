@@ -22,9 +22,49 @@ A browser's WebSocket sends the site's cookies but no `Authorization` header. So
 
 During the page's first render, before any WebSocket exists, `request` is the page's own request, so the HTML a user without JavaScript sees is rendered for the right user too.
 
-## Every component checks the user itself
+## Guards on components and actions
 
-The guards of a page's route **do not protect the components on that page**. The WebSocket route `/_live` is one route for all components, and any browser that reaches it can mount any listed component with any inputs, whatever page it pretends to be on. A component whose data or actions are not for everyone checks the user itself, from its `Connection`:
+The guards of a page's route **do not protect the components on that page**. The WebSocket route `/_live` is one route for all components, and any browser that reaches it can mount any listed component with any inputs, whatever page it pretends to be on. A component guards itself, with the attributes a route takes:
+
+```php
+use Waypoint\Attributes\{Authenticated, Permissions, Role};
+use Waypoint\Live\Component;
+
+#[Component]
+#[Authenticated]
+final class Billing
+{
+    public function show(Invoice $invoice): void
+    {
+        // ...
+    }
+
+    #[Role(
+        role: 'admin'
+    )]
+    public function refund(Invoice $invoice): void
+    {
+        // ...
+    }
+
+    #[Permissions(
+        permissions: ['invoices.export']
+    )]
+    public function export(): void
+    {
+        // ...
+    }
+}
+```
+
+- On the class (or a parent class) they hold for the whole component: it is checked when the component is created, in the page, on `mount` and as a child, and before every action.
+- On a method they hold for that action, checked before every call. As on a route, the method's `#[Role]` and `#[Permissions]` win over the class's, and both imply `#[Authenticated]`.
+- They are checked against the connection's request, `$request->jwt`, by the same rules as a route's guards: `#[Permissions]` asks the app's `PermissionProvider`. A component that fails them fails with `UnauthorizedException` or `ForbiddenException`: in the page that is the app's usual answer (a redirect to the login, a 401 or a 403), over the WebSocket the component shows `data-live-error`, and the log has the reason.
+- A JWT whose `exp` has passed since the WebSocket connected counts as signed out: the next mount or call is refused, and the connection is closed. The browser connects again at once, through the app's middlewares, and gets its components back only if the new request names the same `sub` ([Reconnects](reconnect.md#the-same-user-only)).
+
+## Checks inside the component
+
+Where an attribute does not fit, such as a rule about which record the user may touch, the component checks the user itself, from its `Connection`:
 
 - in what its template shows, and
 - in every action.
@@ -94,7 +134,7 @@ The `markPaid($invoice)` call is bound on the server, so the browser can only cl
 
 ## The JWT is from the time of connecting
 
-`$request->jwt` is what the middlewares found when the WebSocket connected. It is not refreshed until the browser reconnects, and a WebSocket can stay open for hours. A component that must notice a logout, an expired session or a revoked token right away asks the source again on every action:
+`$request->jwt` is what the middlewares found when the WebSocket connected. It is not refreshed until the browser reconnects, and a WebSocket can stay open for hours. When its `exp` passes, Live closes the connection at the next mount or call, so the browser connects again with whatever login it has then (above). A component that must notice a logout or a revoked token before that asks the source again on every action:
 
 ```php
 public function markPaid(Invoice $invoice): void

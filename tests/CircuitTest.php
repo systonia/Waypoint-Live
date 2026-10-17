@@ -681,6 +681,73 @@ final class CircuitTest extends TestCase
         $this->assertSame(['waypoint-live'], \Tenma::$subscribed);
     }
 
+    public function testGuardsOfTheComponentAndItsActionsCheckTheConnectionsRequest(): void
+    {
+        $live = new LivePlugin([\Waypoint\Live\Tests\Fixtures\Vault::class]);
+        $container = new Container();
+        $container->bind(\Waypoint\PermissionProvider::class, new class implements \Waypoint\PermissionProvider {
+            public function hasPermission(mixed $jwt, string $permission): bool
+            {
+                return is_array($jwt) && in_array($permission, (array) ($jwt['can'] ?? []), true);
+            }
+        });
+        $live->boot($container, self::environment(), new Logger(), new LiveOptions());
+        $request = static function (?array $jwt): Request {
+            $request = Request::fromParts('GET', '/_live');
+            $request->jwt = $jwt;
+            return $request;
+        };
+        $mount = $this->message(['t' => 'mount', 'id' => 'c0', 'c' => 'test-vault', 'p' => []]);
+        $call = fn (string $method) => $this->message(['t' => 'call', 'id' => 'c0', 'm' => $method, 'a' => []]);
+
+        // #[Authenticated] on the class: nobody signed in mounts nothing, the page neither
+        $this->circuit($request(null), $live)->handle($mount);
+        $this->assertInstanceOf(\Waypoint\Exceptions\UnauthorizedException::class, $this->reported[0] ?? null);
+        try {
+            Circuit::page($live, 'test-vault', [], '', $request(null));
+            $this->fail('The page rendered a guarded component for nobody');
+        } catch (\Waypoint\Exceptions\UnauthorizedException) {
+        }
+
+        // Signed in: the class's guard holds, the methods' are checked before each call
+        $this->reported = [];
+        $circuit = $this->circuit($request(['sub' => 1, 'role' => 'user', 'can' => ['vault.open']]), $live);
+        $circuit->handle($mount);
+        $circuit->handle($call('peek'));
+        $circuit->handle($call('wipe'));
+        $circuit->handle($call('open'));
+        $this->assertSame(['peek', 'open'], $circuit->byId('c0')?->component->done);
+        $this->assertCount(1, $this->reported);
+        $this->assertInstanceOf(\Waypoint\Exceptions\ForbiddenException::class, $this->reported[0]);
+    }
+
+    public function testALoginThatExpiredClosesTheConnectionInsteadOfACall(): void
+    {
+        $request = Request::fromParts('GET', '/_live');
+        $request->jwt = ['sub' => 1, 'exp' => time() + 60];
+        $closed = 0;
+        $circuit = new Circuit($this->plugin(), function (string $message): void {
+            $this->sent[] = json_decode($message, true);
+        }, function (Throwable $e): void {
+            $this->reported[] = $e;
+        }, static fn (): Closure => static function (): void {
+        }, $request, function () use (&$closed): void {
+            $closed++;
+        });
+        $circuit->handle($this->message(['t' => 'mount', 'id' => 'c0', 'c' => 'test-counter', 'p' => ['count' => 1]]));
+        $request->jwt['exp'] = time() - 1;
+        $this->sent = [];
+        $circuit->handle($this->message(['t' => 'call', 'id' => 'c0', 'm' => 'add', 'a' => ['1']]));
+        $circuit->handle($this->message(['t' => 'mount', 'id' => 'c1', 'c' => 'test-counter', 'p' => []]));
+
+        // Neither ran: the connection closes, and the browser connects again through the app's middlewares
+        $this->assertSame(2, $closed);
+        $this->assertSame([], $this->sent);
+        $this->assertSame([], $this->reported);
+        $this->assertSame(1, $circuit->byId('c0')?->component->count);
+        $this->assertNull($circuit->byId('c1'));
+    }
+
     public function testNavigatingWhileThePageRendersIsAnError(): void
     {
         $this->expectException(\LogicException::class);

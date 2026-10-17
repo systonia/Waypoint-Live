@@ -42,6 +42,9 @@ final class Circuit
 
     private Broadcast $broadcast;
 
+    /** @var Closure(): void */
+    private Closure $close;
+
     /** @var WeakMap<object, int> Objects bound to calls, numbered in the order they first were */
     private WeakMap $objects;
 
@@ -73,9 +76,12 @@ final class Circuit
      * @param Closure(Throwable): void $report Logs a failure.
      * @param (Closure(float, Closure(): void): (Closure(): void))|null $every Starts a timer and returns its cancel; Tenma's setInterval by default.
      * @param Request|null $request The request the connection came in with; components reach it through Connection.
+     * @param (Closure(): void)|null $close Closes the connection, so that the browser connects again
      */
-    public function __construct(private LivePlugin $live, private Closure $send, private Closure $report, ?Closure $every = null, ?Request $request = null)
+    public function __construct(private LivePlugin $live, private Closure $send, private Closure $report, ?Closure $every = null, ?Request $request = null, ?Closure $close = null)
     {
+        $this->close = $close ?? static function (): void {
+        };
         $this->services = $live->scope();
         $this->objects = new WeakMap();
         $this->connection = new Connection($request ?? Request::fromParts('GET', '/'));
@@ -136,6 +142,13 @@ final class Circuit
             if ($this->live->isDev()) {
                 ($this->send)(json_encode(['t' => 'inspection', 'id' => $id, 'state' => $this->inspect($id)], JSON_THROW_ON_ERROR | JSON_INVALID_UTF8_SUBSTITUTE));
             }
+            return;
+        }
+        // A login that expired since the connection opened is none: the browser connects again, through the app's
+        // middlewares, and the circuit starts over for whoever it is then
+        if ($this->expired()) {
+            $this->live->notice('the login of a connection expired: it is closed, so that the browser connects again');
+            ($this->close)();
             return;
         }
         $this->started = hrtime(true);
@@ -245,6 +258,13 @@ final class Circuit
         return self::subject($this->connection->request) === self::subject($request);
     }
 
+    /** Whether the connection's JWT has expired since it was decoded: then nobody is signed in any more. */
+    private function expired(): bool
+    {
+        $exp = $this->connection->request->jwt['exp'] ?? null;
+        return (is_int($exp) || is_float($exp)) && $exp <= time();
+    }
+
     private static function subject(Request $request): mixed
     {
         return $request->jwt['sub'] ?? null;
@@ -296,10 +316,12 @@ final class Circuit
      * the browser missed whatever changed in between.
      *
      * @param Closure(string): void $send
+     * @param (Closure(): void)|null $close Closes the new connection
      */
-    public function reattach(Closure $send, ?Request $request = null): void
+    public function reattach(Closure $send, ?Request $request = null, ?Closure $close = null): void
     {
         $this->send = $send;
+        $this->close = $close ?? $this->close;
         $this->broadcast->connect($this);
         if ($request !== null) {
             $this->connection->reconnected($request);
@@ -418,6 +440,7 @@ final class Circuit
             }
         }
         $args = [...$before, ...$args];
+        $this->live->guard($node->component::class, $method, $this->connection->request);
         try {
             $reflection->invokeArgs($node->component, $args);
         } finally {

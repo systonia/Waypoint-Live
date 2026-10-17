@@ -3,14 +3,16 @@
 namespace Waypoint\Live;
 
 use InvalidArgumentException;
+use ReflectionClass;
 use ReflectionProperty;
 use Throwable;
+use Waypoint\Attributes\{Authenticated, Permissions, Role};
 use Waypoint\Container;
 use Waypoint\Environment;
 use Waypoint\Logger;
 use Waypoint\Http\{Request, Response};
 use Waypoint\Plugin\{ClientAsset, PluginBase, ResponseHook, ViewHelper};
-use Waypoint\Routing\PropertyInjector;
+use Waypoint\Routing\{PropertyInjector, RouteGuard};
 
 /**
  * Register with `$app->plugin(new LivePlugin([Counter::class, Search::class]))`: classes with a #[Component]
@@ -209,11 +211,48 @@ final class LivePlugin extends PluginBase implements ViewHelper, ClientAsset, Re
     public function create(string $selector, array $inputs, Scope $services): array
     {
         [$class, $template] = $this->components->get($selector) ?? throw new InvalidArgumentException("'$selector' is not a live component of this app");
+        $this->guard($class, null, $services->get(Connection::class)->request);
         $component = new $class();
         // ponytail: services the component injects must be reachable from a controller or need no constructor arguments
         (new PropertyInjector($services))->injectReflected($component);
         $this->setInputs($component, $selector, $inputs);
         return [$component, $template];
+    }
+
+    /**
+     * @internal #[Authenticated], #[Role] and #[Permissions] of a component class (and its parents) and of one of its
+     * methods, checked against $request as Waypoint checks a route's: the method's role and permissions win over
+     * the class's. Throws UnauthorizedException or ForbiddenException.
+     *
+     * @param class-string $class
+     */
+    public function guard(string $class, ?string $method, Request $request): void
+    {
+        $lineage = [];
+        for ($reflection = new ReflectionClass($class); $reflection !== false; $reflection = $reflection->getParentClass()) {
+            $lineage[] = $reflection;
+        }
+        $members = [...($method !== null ? [new \ReflectionMethod($class, $method)] : []), ...$lineage];
+        $find = static function (string $attribute) use ($members): ?object {
+            foreach ($members as $member) {
+                $found = $member->getAttributes($attribute);
+                if ($found !== []) {
+                    return $found[0]->newInstance();
+                }
+            }
+            return null;
+        };
+        $role = $find(Role::class);
+        $permissions = $find(Permissions::class);
+        $route = [
+            'authenticated' => $find(Authenticated::class) !== null || $role !== null || $permissions !== null,
+            'role' => $role instanceof Role ? $role->role : null,
+            'permissions' => $permissions instanceof Permissions ? array_values(array_filter($permissions->permissions, 'is_string')) : null,
+        ];
+        if ($route['authenticated']) {
+            // GET: a WebSocket message carries no CSRF token, the upgrade request was checked as the page's
+            (new RouteGuard($this->container))->check($route, 'GET', $request);
+        }
     }
 
     /**
