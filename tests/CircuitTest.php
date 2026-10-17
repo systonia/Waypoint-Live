@@ -633,6 +633,19 @@ final class CircuitTest extends TestCase
         $this->assertTrue($this->circuit()->sameUser(Request::fromParts('GET', '/_live')));
     }
 
+    #[\PHPUnit\Framework\Attributes\RunInSeparateProcess]
+    public function testTheBroadcastSubscribesOnlyOnceATabConnects(): void
+    {
+        // A Tenma with publish(), as far as Broadcast can tell; a subscription keeps its process running
+        eval('function tenma_pubsub(): void {} final class Tenma { public static array $subscribed = []; public static function subscribe(string $channel, callable $callback): void { self::$subscribed[] = $channel; } }');
+        $live = $this->plugin();
+        $this->assertSame([], \Tenma::$subscribed);
+
+        $this->circuit(live: $live);
+        $this->circuit(live: $live);
+        $this->assertSame(['waypoint-live'], \Tenma::$subscribed);
+    }
+
     public function testNavigatingWhileThePageRendersIsAnError(): void
     {
         $this->expectException(\LogicException::class);

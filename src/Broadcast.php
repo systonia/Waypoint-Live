@@ -21,13 +21,13 @@ final class Broadcast
     /** @var WeakMap<Circuit, true> The circuits whose browser is connected. */
     private WeakMap $circuits;
 
+    /** Whether this worker listens to the other workers' broadcasts yet */
+    private bool $subscribed = false;
+
     /** @internal LivePlugin creates the one instance of the app */
     public function __construct()
     {
         $this->circuits = new WeakMap();
-        if (self::acrossWorkers()) {
-            \Tenma::subscribe(self::CHANNEL, fn () => $this->changedHere());
-        }
     }
 
     /** Every connected tab renders, and sends the components whose HTML changed. */
@@ -74,6 +74,11 @@ final class Broadcast
     /** @internal */
     public function connect(Circuit $circuit): void
     {
+        // Once a tab connects: a subscription keeps the process running, which a script without a server must not
+        if (!$this->subscribed && self::acrossWorkers()) {
+            $this->subscribed = true;
+            \Tenma::subscribe(self::CHANNEL, fn () => $this->changedHere());
+        }
         $this->circuits[$circuit] = true;
     }
 

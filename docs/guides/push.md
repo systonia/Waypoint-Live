@@ -158,7 +158,7 @@ A broadcast renders every tab of every user, whether it shows the room or not; t
 
 ## Several workers
 
-Each Tenma worker has its own memory, its own tabs and its own instance of every app-wide service. Under a Tenma with `Tenma::publish()`, `changed()` goes out through it: every worker renders its tabs, and with `tenma --pubsub redis://host` every process on that Redis too.
+Each Tenma worker has its own memory, its own tabs and its own instance of every app-wide service. Under a Tenma with `Tenma::publish()`, `changed()` goes out through it: every worker renders its tabs, and with `tenma --pubsub redis://host` every process on that Redis too. A worker subscribes to these broadcasts when its first tab connects, so a script that boots the app without a server (a CLI task, a test) ends as usual.
 
 That is enough when the shared state lives outside the workers, in Postgres or Redis: each worker renders from the same source.
 
