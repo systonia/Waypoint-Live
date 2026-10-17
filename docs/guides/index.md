@@ -9,7 +9,7 @@ Each guide covers one part of Live, with complete components: a class, its templ
 Building components:
 
 - [Components](components.md): `#[Component]`, selector and template, state, inputs, lifecycle, components of a plugin
-- [Templates](templates.md): `{{ }}`, comments, `@if` and `@foreach`, plain PHP, `Html` for trusted markup
+- [Templates](templates.md): Waypoint's template syntax in a component, `{{ }}`, class names, `Html` for trusted markup
 - [Events and actions](events.md): `data-on-*`, `data-arg`, bound calls like `remove($task)`, what the browser can call
 - [Child components and inputs](children.md): placing components in templates, keys, closures as callbacks
 - [Forms and binding](forms.md): `data-on-submit`, fields that follow the server, validation
@@ -23,7 +23,7 @@ Running and checking:
 
 - [Reconnects and parked circuits](reconnect.md): what happens when the connection drops
 - [Development tools](development.md): hot reload, the error overlay, editor support, tracing and inspecting
-- [Static analysis](static-analysis.md): `vendor/bin/live-check` and the PHPStan extension
+- [Static analysis](static-analysis.md): `vendor/bin/waypoint-check` (or `live-check`) and the PHPStan extension
 - [Testing](testing.md): `Testing\Tab` and `Testing\Mounted`
 - [Security model](security.md): what the browser can and cannot do
 - [Deployment and limits](deployment.md): workers, proxies, limits of the proof of concept

@@ -116,114 +116,14 @@ final class Editor implements Provider, Tokens, Imports
         if ($this->templateOf($file) === null) {
             return [];
         }
-        $directives = new Directives($text);
-        $tokens = [];
-        foreach ($directives->found as $found) {
-            if ($found['kind'] === 'at' || $found['kind'] === 'insert') {
-                continue;
-            }
-            if ($found['kind'] === 'class') {
-                self::token($tokens, $text, $found['start'], $found['start'] + 6, 'keyword');
-                self::token($tokens, $text, $found['start'] + 7, $found['start'] + 7 + strlen($found['class'] ?? ''), 'string');
-                self::php($tokens, $text, ...($found['expression'] ?? [0, 0]));
-                continue;
-            }
-            if ($found['kind'] === 'comment' || $found['kind'] === 'broken') {
-                self::token($tokens, $text, $found['start'], $found['end'], $found['kind'] === 'comment' ? 'comment' : 'keyword');
-                continue;
-            }
-            [$from, $to] = $found['expression'] ?? [$found['end'], $found['end']];
-            if ($found['kind'] === 'directive' || $found['kind'] === 'use') {
-                self::token($tokens, $text, $found['start'], $found['start'] + 1 + strlen($found['name'] ?? ''), 'keyword');
-            } else {
-                // {{ and }}, @code and @endcode
-                self::token($tokens, $text, $found['start'], $from, 'keyword');
-                self::token($tokens, $text, $to, $found['end'], 'keyword');
-            }
-            self::php($tokens, $text, $from, $to);
-        }
+        $tokens = \Waypoint\View\Editor::highlight(new Directives($text), $text);
         // data-on-click="remove($item)": the method and its arguments, which are PHP
         preg_match_all('/\bdata-on-[a-z]+="(\w+)\(([^"]*)\)"/', $text, $calls, PREG_OFFSET_CAPTURE | PREG_SET_ORDER);
         foreach ($calls as [, [$name, $start], [$args, $from]]) {
-            self::token($tokens, $text, $start, $start + strlen($name), 'method');
-            self::php($tokens, $text, $from, $from + strlen($args));
+            \Waypoint\View\Editor::token($tokens, $text, $start, $start + strlen($name), 'method');
+            \Waypoint\View\Editor::php($tokens, $text, $from, $from + strlen($args));
         }
         return $tokens;
-    }
-
-    /**
-     * PHP's own tokens of an expression: variables, members, calls, classes, strings, numbers, keywords.
-     *
-     * @param list<Token> $tokens
-     */
-    private static function php(array &$tokens, string $text, int $from, int $to): void
-    {
-        $php = token_get_all('<?php ' . substr($text, $from, $to - $from));
-        $at = $from - 6;
-        foreach ($php as $i => $token) {
-            $length = strlen(is_array($token) ? $token[1] : $token);
-            if (is_array($token)) {
-                $type = match ($token[0]) {
-                    T_VARIABLE => 'variable',
-                    T_CONSTANT_ENCAPSED_STRING, T_ENCAPSED_AND_WHITESPACE => 'string',
-                    T_LNUMBER, T_DNUMBER => 'number',
-                    T_NAME_QUALIFIED, T_NAME_FULLY_QUALIFIED => 'class',
-                    T_STRING => self::name($php, $i),
-                    T_OPEN_TAG, T_WHITESPACE, T_COMMENT, T_DOC_COMMENT => null,
-                    // as, instanceof, fn, match, new, ...: every other word
-                    default => ctype_alpha($token[1]) ? 'keyword' : 'operator',
-                };
-                if ($type !== null) {
-                    self::token($tokens, $text, $at, $at + $length, $type);
-                }
-            }
-            $at += $length;
-        }
-    }
-
-    /**
-     * What a bare name is by what surrounds it: `->name(` a method, `->name` a property, `name(` a function.
-     *
-     * @param list<string|array{int, string, int}> $php
-     * @return 'method'|'property'|'keyword'|'function'|'class'
-     */
-    private static function name(array $php, int $i): string
-    {
-        $neighbour = static function (int $step) use ($php, $i): string {
-            for ($j = $i + $step; isset($php[$j]); $j += $step) {
-                if (!is_array($php[$j]) || $php[$j][0] !== T_WHITESPACE) {
-                    return is_array($php[$j]) ? $php[$j][1] : $php[$j];
-                }
-            }
-            return '';
-        };
-        $call = $neighbour(1) === '(';
-        return match (true) {
-            in_array($neighbour(-1), ['->', '?->', '::'], true) => $call ? 'method' : 'property',
-            in_array(strtolower(is_array($php[$i]) ? $php[$i][1] : ''), ['true', 'false', 'null'], true) => 'keyword',
-            $call => 'function',
-            default => 'class',
-        };
-    }
-
-    /**
-     * One token per line it covers: editors take no token across lines.
-     *
-     * @param list<Token> $tokens
-     * @param TokenType $type
-     */
-    private static function token(array &$tokens, string $text, int $start, int $end, string $type): void
-    {
-        while ($start < $end) {
-            $newlineBefore = strrpos(substr($text, 0, $start), "\n");
-            $lineStart = $newlineBefore === false ? 0 : $newlineBefore + 1;
-            $newline = strpos($text, "\n", $start);
-            $stop = $newline === false ? $end : min($end, $newline);
-            if ($stop > $start) {
-                $tokens[] = ['line' => substr_count($text, "\n", 0, $start) + 1, 'column' => $start - $lineStart, 'length' => $stop - $start, 'type' => $type];
-            }
-            $start = $stop + 1;
-        }
     }
 
     /** @return class-string|null The component whose template $file is */

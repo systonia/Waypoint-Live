@@ -24,8 +24,8 @@ final class ClassesTest extends TestCase
 
     public function testEveryTemplateCallsItWithoutAnImport(): void
     {
-        $this->assertStringContainsString('use function Waypoint\Live\classes;', Template::header(null));
-        $this->assertStringContainsString('use function Waypoint\Live\classes;', Template::header(Board::class));
+        $this->assertStringContainsString('use function Waypoint\classes;', Template::header(null));
+        $this->assertStringContainsString('use function Waypoint\classes;', Template::header(Board::class));
         eval(Template::compile('<p class="{{ classes(\'a\', [\'b\' => true]) }}">', [], class: Board::class, first: 'return; '));
     }
 }

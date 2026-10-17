@@ -84,7 +84,7 @@ When timers run:
 - **Stopped for good** when the component is removed (a child no longer placed) or the tab is gone.
 - **Like an action.** An exception in a timer is logged and marks the component with `data-live-error`; the timer keeps running. A timer may call [`navigate()`](navigation.md).
 
-A timer method takes no required parameters, is not static, and its interval is more than 0. The development checks and `live-check` report a timer that breaks one of these rules. In development, the console and the log warn when timers send more than 10 renders a second in one tab.
+A timer method takes no required parameters, is not static, and its interval is more than 0. The development checks and `waypoint-check` report a timer that breaks one of these rules. In development, the console and the log warn when timers send more than 10 renders a second in one tab.
 
 A component with many timers in many tabs adds up: 1,000 open tabs with a one-second timer are 1,000 renders a second. Prefer a longer interval, or a broadcast when the change happens.
 

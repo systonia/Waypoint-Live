@@ -1,22 +1,10 @@
 #!/usr/bin/env php
 <?php
 
-// The project's live components checked without running the app: vendor/bin/live-check [directory]
+// The same as vendor/bin/waypoint-check: the project's live components and views checked without running the
+// app. vendor/bin/live-check [directory]
 
 $root = realpath($argv[1] ?? getcwd()) ?: getcwd();
 require "$root/vendor/autoload.php";
 
-try {
-    $problems = [...Waypoint\Live\Check::problems($root), ...Waypoint\Live\Check::phpstan($root)];
-} catch (RuntimeException $e) {
-    fwrite(STDERR, 'live-check: ' . $e->getMessage() . "\n");
-    exit(2);
-}
-usort($problems, static fn (array $a, array $b) => [$a['file'], $a['line']] <=> [$b['file'], $b['line']]);
-foreach ($problems as $problem) {
-    $file = str_starts_with($problem['file'], "$root/") ? substr($problem['file'], strlen($root) + 1) : $problem['file'];
-    echo "$file:{$problem['line']}: {$problem['severity']}: {$problem['message']}\n";
-}
-$errors = count(array_filter($problems, static fn (array $p) => $p['severity'] === 'error'));
-fwrite(STDERR, $problems === [] ? "live-check: no problems\n" : "live-check: $errors errors, " . (count($problems) - $errors) . " warnings\n");
-exit($errors > 0 ? 1 : 0);
+exit(Waypoint\View\Check::main($argv, 'live-check'));

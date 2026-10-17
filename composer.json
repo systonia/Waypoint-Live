@@ -5,7 +5,7 @@
     "license": ["MIT", "Apache-2.0"],
     "require": {
         "php": ">=8.5",
-        "systonia/waypoint": "^0.7.2"
+        "systonia/waypoint": "^0.7.7"
     },
     "require-dev": {
         "phpstan/phpstan": "^2.2",
@@ -29,6 +29,9 @@
         }
     },
     "extra": {
+        "waypoint": {
+            "checks": "Waypoint\\Live\\TemplateChecks"
+        },
         "tenma": {
             "lsp": "Waypoint\\Live\\Editor"
         },

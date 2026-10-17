@@ -186,7 +186,7 @@ final class DirectivesTest extends TestCase
         // Group and function imports one by one, the trait in the class body is none
         $this->assertSame(
             'namespace Waypoint\Live\Tests\Fixtures; use Waypoint\Live\Component; use Waypoint\Live\Html as Markup; '
-                . 'use Waypoint\Live\Tests\Fixtures\Sub\Phase; use function strtoupper as shout; use function Waypoint\\Live\\classes; use Waypoint; ',
+                . 'use Waypoint\Live\Tests\Fixtures\Sub\Phase; use function strtoupper as shout; use function Waypoint\\classes; use Waypoint; ',
             Template::header(Board::class),
         );
         // The header shares the first line: errors keep theirs
@@ -277,7 +277,7 @@ final class DirectivesTest extends TestCase
 
     public function testConditionalClassesGoIntoTheClassAttribute(): void
     {
-        $call = static fn (string $static, string $conditions) => "\\Waypoint\\Live\\classes({$static}[$conditions])";
+        $call = static fn (string $static, string $conditions) => "\\Waypoint\\classes({$static}[$conditions])";
         $caught = '(string) ob_get_clean(), ';
         // The attribute's value goes through the same classes() call as the conditions
         $this->assertSame(
@@ -347,7 +347,7 @@ final class DirectivesTest extends TestCase
         $this->assertSame(['1: <p> has two class attributes: the browser takes the first only'], self::problems('<p class="a" class="b" @class.c="$c">'));
         $this->assertSame(['1: @class.c comes twice in <p>'], self::problems('<p @class.c="$c" @class.c="$d">'));
         // The attributes as the browser reads them: class= inside another value is none, an unquoted one needs quotes
-        $this->assertSame('<p title=" class=\'t\'" class="<?php echo \\Waypoint\\Live\\classes([(1) ? \'b\' : \'\']) ?>">', (new Directives('<p title=" class=\'t\'" @class.b="1">'))->compile());
+        $this->assertSame('<p title=" class=\'t\'" class="<?php echo \\Waypoint\\classes([(1) ? \'b\' : \'\']) ?>">', (new Directives('<p title=" class=\'t\'" @class.b="1">'))->compile());
         $this->assertSame(['1: <p class=...> needs quotes for @class.: class="..."'], self::problems('<p class=a @class.b="$b">'));
         $this->assertSame(['1: <p> has two class attributes: the browser takes the first only'], self::problems('<p class="a" CLASS=b @class.c="$c">'));
         $child = new Directives('<app-row @class.c="$c"></app-row>', ['app-row']);

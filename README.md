@@ -84,7 +84,9 @@ plugin starts.
 
 ### Directives
 
-Templates also take directives, mixed with plain PHP as you like:
+Templates also take directives, mixed with plain PHP as you like. The syntax is Waypoint's, the same as in its
+views ([the syntax](https://github.com/systonia/Waypoint/blob/main/docs/guides/views.md#the-syntax)); a template
+adds child tags and `data-on-*`, and leaves `@model`, `@section` and `@yield` to views:
 
 ```
 {{/* every product, or a note */}}
@@ -107,7 +109,7 @@ Templates also take directives, mixed with plain PHP as you like:
   A value of type `Waypoint\Html` prints as it is (`$this->badge` above is one): whether markup is raw
   depends on the value, never on how the template prints it. `{{/* */}}` is a comment.
 - `@if (...)`, `@elseif (...)`, `@else`, `@endif`, `@foreach (...)`, `@endforeach`. `@@` prints an `@`.
-- A directive starts a line or follows whitespace or `>`, so `info@example.com`, `@media` in CSS and
+- A directive starts a line or follows whitespace, `>` or `}}`, so `info@example.com`, `@media` in CSS and
   `@click` stay text. Inside `<?php ?>` nothing is a directive.
 - `@code ... @endcode` holds PHP, as `<?php ... ?>`: `@code $order = $this->order() @endcode`. Neither may
   declare anything (`use`, `namespace`, `declare`, a named function or class) or hold a `break` outside a loop,
@@ -118,7 +120,8 @@ Templates also take directives, mixed with plain PHP as you like:
 - `<li class="row" @class.late="$order->late">` adds `late` to the class while the condition holds; the name
   runs to the first `=` outside `[ ]`, so Tailwind classes like `md:w-1/2` work. The attribute's own classes
   go through the same `classes()`, so each class comes once.
-  `classes('row', ['late' => $order->late])` builds the same list in PHP, in every template without an import.
+  `classes('row', ['late' => $order->late])` builds the same list in PHP, in every template without an import
+  (`Waypoint\classes()`; `Waypoint\Live\classes()` is another name for it).
 - A block that does not close, or closes another one, keeps the template from compiling, with its line; so does
   a `/*` without its `*/` inside `{{ }}`, which would comment out the template up to the next `*/`. In the
   editor these show while typing; `@forech` gets a hint and stays text.
@@ -405,15 +408,17 @@ app share its services: a `Broadcast` in one renders the other.
 
 ## Static analysis
 
-`vendor/bin/live-check` checks the project's components without running the app: what the app checks in
-development (above), and PHPStan on every template, read as the PHP it becomes with `$this` as its component.
+`vendor/bin/waypoint-check`, Waypoint's check, covers the project's components too (Live takes part through
+`TemplateChecks`), and `vendor/bin/live-check` is another name for it. It runs without the app: what the app
+checks in development (above), and PHPStan on every template, read as the PHP it becomes with `$this` as its
+component, and on every view.
 An undefined property, a method with the wrong arguments or a typo in the member of a loop variable is reported
 at the template's line:
 
 ```
-$ vendor/bin/live-check
+$ vendor/bin/waypoint-check
 src/Products.Template.php:4: error: Access to an undefined property Demo\Product::$nmae.
-live-check: 1 errors, 0 warnings
+waypoint-check: 1 errors, 0 warnings
 ```
 
 It needs `phpstan/phpstan` as a dev dependency and uses the project's `phpstan.neon` (level, extensions), or
@@ -422,9 +427,9 @@ fails a CI step. In a `tenma.dev.php` hook, PHPStan's findings reach the editor 
 
 ```php
 new Tenma\Hook(
-    name: 'live-check',
-    inputs: ['src/**'],
-    run: fn () => Waypoint\Live\Check::publish(__DIR__),
+    name: 'waypoint-check',
+    inputs: ['src/**', 'views/**'],
+    run: fn () => Waypoint\View\Check::publish(__DIR__),
 ),
 ```
 

@@ -1,17 +1,19 @@
 ---
 title: Static analysis
-description: Check components and templates without running the app with vendor/bin/live-check, and keep PHPStan from flagging members only templates use.
+description: Check components and templates without running the app with vendor/bin/waypoint-check, and keep PHPStan from flagging members only templates use.
 order: 130
 ---
 
-Templates are PHP, but PHPStan does not read them on its own, and mistakes in them (a misspelt property, a method with the wrong arguments, a `data-on-click` that names nothing) would only show when a page renders or a button is clicked. Live closes that gap twice: `vendor/bin/live-check` analyses every template, and a PHPStan extension tells PHPStan which members the templates use.
+Templates are PHP, but PHPStan does not read them on its own, and mistakes in them (a misspelt property, a method with the wrong arguments, a `data-on-click` that names nothing) would only show when a page renders or a button is clicked. Live closes that gap twice: Waypoint's check, `vendor/bin/waypoint-check`, analyses every template along with the views, and a PHPStan extension tells PHPStan which members the templates use.
 
-## live-check
+## waypoint-check
 
 ```bash
 composer require --dev phpstan/phpstan
-vendor/bin/live-check
+vendor/bin/waypoint-check
 ```
+
+Live takes part in it through [`TemplateChecks`](../reference/Waypoint/Live/TemplateChecks.md), which its `composer.json` names under `extra.waypoint.checks`, so the check covers the views ([Waypoint's views](https://github.com/systonia/Waypoint/blob/main/docs/guides/views.md#the-check)) and the components in one run. `vendor/bin/live-check` is another name for it, with the same output and exit codes.
 
 It finds every class with `#[Component]` below the project's `autoload` and `autoload-dev` directories (PSR-4 and classmap), without running the app, and reports:
 
@@ -21,15 +23,15 @@ It finds every class with `#[Component]` below the project's `autoload` and `aut
 Each problem is reported at the template's own line:
 
 ```
-$ vendor/bin/live-check
+$ vendor/bin/waypoint-check
 src/ProductList.Template.php:2: error: Call to an undefined method App\Catalog::prodcts().
-live-check: 1 errors, 0 warnings
+waypoint-check: 1 errors, 0 warnings
 ```
 
 ```
-$ vendor/bin/live-check
+$ vendor/bin/waypoint-check
 src/ProductList.Template.php:4: error: data-on-click="ad($product)": ProductList has no method ad(). Did you mean add()?
-live-check: 1 errors, 0 warnings
+waypoint-check: 1 errors, 0 warnings
 ```
 
 A template with an error of the first kind is left out of the PHPStan run; it would only fail to parse.
@@ -38,14 +40,14 @@ A template with an error of the first kind is left out of the PHPStan run; it wo
 |---|---|
 | 0 | no errors (warnings may have been printed) |
 | 1 | at least one error |
-| 2 | live-check could not run, for example without PHPStan |
+| 2 | the check could not run, for example without PHPStan |
 
-So the command fails a CI step as it is. An optional argument names the project's directory: `vendor/bin/live-check path/to/project`.
+So the command fails a CI step as it is. An optional argument names the project's directory: `vendor/bin/waypoint-check path/to/project`.
 
 ### Configuration
 
 - PHPStan runs with the project's `phpstan.neon` (or `phpstan.neon.dist`): its level, its extensions, its bootstrap files. Without one, it runs at level 6.
-- The generated files go to the system's temp directory (`live-check-<hash of the project path>`), one per component, never into the project.
+- The generated files go to the system's temp directory (`waypoint-check-<hash of the project path>`), one per component and view, never into the project.
 - Types in templates come from the component's properties and methods. A property's `@var list<Task>` lets PHPStan check what a loop over it does with each `$task`.
 
 ### In the editor while saving
@@ -57,14 +59,14 @@ PHPStan is too slow to run on every keystroke, but a Tenma build hook can run it
 
 return [
     new Tenma\Hook(
-        name: 'live-check',
-        inputs: ['src/**'],
-        run: fn () => Waypoint\Live\Check::publish(__DIR__),
+        name: 'waypoint-check',
+        inputs: ['src/**', 'views/**'],
+        run: fn () => Waypoint\View\Check::publish(__DIR__),
     ),
 ];
 ```
 
-[`Check::publish()`](../reference/Waypoint/Live/Check.md#publish) runs PHPStan on the templates and hands the findings to `Tenma::diagnostics()`, which `tenma lsp` shows at their line. The checks of the first kind already reach the editor while typing, through the language server ([Development tools](development.md#in-the-editor)).
+`Waypoint\View\Check::publish()` runs PHPStan on the templates and views and hands the findings to `Tenma::diagnostics()`, which `tenma lsp` shows at their line. The checks of the first kind already reach the editor while typing, through the language server ([Development tools](development.md#in-the-editor)).
 
 ## The PHPStan extension
 
@@ -84,10 +86,10 @@ includes:
 
 ```bash
 vendor/bin/phpstan analyse
-vendor/bin/live-check
+vendor/bin/waypoint-check
 vendor/bin/phpunit
 ```
 
-PHPStan checks the classes, `live-check` the templates, and the PHPUnit tests with [`Testing\Tab`](testing.md) prove that the templates wire the right methods to the right elements.
+PHPStan checks the classes, `waypoint-check` the templates and views, and the PHPUnit tests with [`Testing\Tab`](testing.md) prove that the templates wire the right methods to the right elements.
 
-See also: [`Check`](../reference/Waypoint/Live/Check.md), [Development tools](development.md).
+See also: [`TemplateChecks`](../reference/Waypoint/Live/TemplateChecks.md), [`Check`](../reference/Waypoint/Live/Check.md), [Development tools](development.md).

@@ -1,10 +1,10 @@
 ---
 title: Templates
-description: Write a component's template with escaped output, comments, @if and @foreach, @code, class names from the component's imports, conditional classes, plain PHP, and Html for markup you built yourself.
+description: Write a component's template in Waypoint's template syntax, with escaped output, class names from the component's imports, Html for markup you built yourself, and child components.
 order: 20
 ---
 
-A template is a PHP file rendered with `$this` as the component, private properties and methods included. On top of PHP it knows a few directives: `{{ }}` to print, `{{/* */}}` for comments, `@if` and `@foreach` blocks, `@code` for a few lines of PHP, `@use` to import a class and `@class.name` for classes that come and go. Directives and plain PHP mix freely; each directive becomes PHP on the same line, so error messages and the editor point at the template's own lines.
+A template is a PHP file rendered with `$this` as the component, private properties and methods included. On top of PHP it knows the directives of Waypoint's views: `{{ }}` to print, `{{/* */}}` for comments, `@if` and `@foreach` blocks, `@code` for a few lines of PHP, `@use` to import a class and `@class.name` for classes that come and go. Directives and plain PHP mix freely; each directive becomes PHP on the same line, so error messages and the editor point at the template's own lines.
 
 ## A template with everything
 
@@ -110,97 +110,34 @@ private function description(): Html
 
 `Html` is a promise that the markup is safe. Build it from escaped parts, as above, or from another template's output; anything that came from a user stays a string, so that it is escaped. Waypoint's views treat it the same way, so a method can hand the same `Html` to a view and to a template. `Waypoint\Live\Html` is a subclass of it, kept for templates written before `Waypoint\Html` existed.
 
-## Comments
+## The syntax
 
-`{{/* ... */}}` is a comment and leaves nothing in the HTML. It may span lines:
-
-```html
-{{/*
-    The badge is hidden until the design is done:
-    <span class="badge">{{ $this->badge }}</span>
-*/}}
-```
-
-An HTML comment `<!-- -->` stays in the HTML the browser gets, as in any page. Neither kind of comment makes a method callable: a `data-on-click` inside a comment is ignored ([Events and actions](events.md#what-the-browser-can-call)).
-
-## Directives
+The syntax is Waypoint's, the same as in its views: [the syntax of views](https://github.com/systonia/Waypoint/blob/main/docs/guides/views.md#the-syntax) describes every directive, and [its mistakes](https://github.com/systonia/Waypoint/blob/main/docs/guides/views.md#mistakes) what keeps a file from compiling. In short:
 
 | Directive | PHP it becomes |
 |---|---|
-| `@if (cond)` | `<?php if (cond): ?>` |
-| `@elseif (cond)` | `<?php elseif (cond): ?>` |
-| `@else` | `<?php else: ?>` |
-| `@endif` | `<?php endif ?>` |
-| `@foreach (expr)` | `<?php foreach (expr): ?>` |
-| `@endforeach` | `<?php endforeach ?>` |
+| `{{/* ... */}}` | nothing: a comment |
+| `@if (cond)`, `@elseif (cond)`, `@else`, `@endif` | `<?php if (cond): ?>` and the rest |
+| `@foreach (expr)`, `@endforeach` | `<?php foreach (expr): ?>`, `<?php endforeach ?>` |
 | `@code` ... `@endcode` | `<?php ... ?>` |
 | `@use (App\Status)` | `use App\Status;` for the whole template |
 | `@class.late="$cond"` | the class `late` in the tag's `class` attribute while `$cond` is truthy |
 | `@@` | a literal `@` |
 
-The condition may span lines and contain parentheses and strings: `@if (in_array('a)', $this->tags, true))` works.
-
-A directive starts a line or follows whitespace or `>`. So `shop@example.com`, `@media` in a `<style>` block and attributes like `@click` stay text. Use `@@` where an `@` that should stay text follows a space, as in `@@{{ $tag }}`.
-
-A `{{ }}` or a child tag at the end of a line keeps the line break after it, `\n` or `\r\n` as the file has it, although PHP drops the one after `?>`.
-
-Directives work inside a tag, for attributes that come and go:
-
-```html
-<input type="checkbox" data-on-change="toggle($task)" @if ($task->done) checked @endif>
-<button @if ($this->saving) disabled @endif data-on-click="save">Save</button>
-```
-
-Inside `<?php ?>` nothing is a directive.
-
-### Mistakes
-
-A block that does not close, an `@endif` that closes an `@foreach`, a `{{` without `}}` or an empty `{{ }}` keeps the template from compiling, with the line:
+A directive starts a line or follows whitespace, `>` or `}}`, so `shop@example.com` and `@media` stay text. Directives and plain PHP mix freely: `@foreach ($this->visible() as $task)` and `<?php foreach ($this->visible() as $task): ?>` are the same. A mistake keeps the template from compiling, with its line:
 
 ```
 Template '/srv/shop/src/ProductCard.Template.php', line 4: @if has no @endif
 ```
 
-So does a `/*` without its `*/` inside `{{ }}`, `@code` or a directive's parentheses, which would comment out the template up to the next `*/`. A misspelt directive such as `@forech` gets a warning (`Did you mean @foreach?`) and stays text. In the editor these show while you type ([Development tools](development.md)).
+What differs in a component's template:
 
-## Plain PHP
-
-A template is PHP, and PHP's own syntax works as in any view. These are the same:
-
-```html
-@foreach ($this->visible() as $task)
-    <li>{{ $task->title }}</li>
-@endforeach
-
-<?php foreach ($this->visible() as $task): ?>
-    <li><?= $task->title ?></li>
-<?php endforeach ?>
-```
-
-A local variable for the rest of the template is plain PHP: `<?php $count = count($this->tags) ?>`. Keep logic in the class, though: a private method such as `visible()` is easier to test and to read than a block of PHP in the HTML.
-
-### @code
-
-`@code ... @endcode` is the same as `<?php ... ?>`, written like the other directives:
-
-```html
-@code
-    $order = $this->order();
-    $late = $order->readyAt < new \DateTimeImmutable();
-@endcode
-
-<h1>{{ $order->number }}</h1>
-@if ($late)
-    <p>Ready soon</p>
-@endif
-```
-
-On one line: `@code $order = $this->order() @endcode`. The last statement needs no `;`.
-
-- The body is PHP only: `{{ }}` and `@if` inside it are PHP text, not directives. It ends at the first `@endcode` that is not inside one of its strings or comments.
-- A `?>` in the body would end the PHP before `@endcode` and keeps the template from compiling. So do an `@code` without `@endcode`, an `@endcode` without `@code` and a `/*` without `*/`. An empty `@code` gets a warning.
-- A template runs on every render, so it cannot declare anything. A `use`, `namespace` or `declare`, a named `function`, `class`, `interface`, `trait` or `enum`, a `break` or `continue` outside a loop, a `yield` outside a function and an assignment to `$this` keep the template from compiling, in `@code` and in `<?php ?>` alike, with the line they are on. PHP would refuse them only when the template first renders, with an error that ends the worker. A closure (`$format = fn ($n) => ...`) or a method of the component does what a function would; `@use` imports a class.
-- A value the template needs is best a property or method of the component: typed, and seen by the editor and PHPStan without help. `@code` is for small helpers of the markup. When the template only needs a yes or no, a method says it best: `@if ($order->status->isPending())`.
+- `@model`, `@section` and `@yield` belong to views: a template has `$this` as its component and no layout.
+- A template cannot declare anything. A `use` or `namespace` keeps it from compiling (it has its component's, and `@use` adds an import), as do a named `function`, `class`, `interface`, `trait` or `enum`, a `break` or `continue` outside a loop, a `yield` outside a function and an assignment to `$this`, in `@code` and in `<?php ?>` alike. A closure (`$format = fn ($n) => ...`) or a method of the component does what a function would.
+- `@class.` on a child component's tag keeps the template from compiling: a child takes inputs, so put the class on an element inside its template or pass an input.
+- Markup in a comment, `{{/* */}}` or `<!-- -->`, makes no method callable: a `data-on-click` inside one is ignored ([Events and actions](events.md#what-the-browser-can-call)).
+- A value the template needs is best a property or method of the component: typed, and seen by the editor and PHPStan without help. `@code` is for small helpers of the markup: `@code $order = $this->order() @endcode`.
+- [`classes()`](https://github.com/systonia/Waypoint/blob/main/docs/reference/Waypoint/index.md#classes) builds a `class` value in PHP, `classes('row', ['late' => $order->late])`, in every template without an import. It is `Waypoint\classes()`; `Waypoint\Live\classes()` stays as another name for it.
 
 ## Class names in a template
 

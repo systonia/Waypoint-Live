@@ -10,6 +10,7 @@ use Stringable;
 use Throwable;
 use TypeError;
 use WeakMap;
+use Waypoint\View\Compiler;
 
 /**
  * @internal A component's template: a PHP file rendered with `$this` as the component, private members included.
@@ -17,7 +18,7 @@ use WeakMap;
  * `<app-row name="<?= $city ?>" key="<?= $city ?>"></app-row>` places a child component: a value that is a
  * single `<?= expr ?>` passes the value itself (an int, an object, a closure), anything else passes a string.
  * `data-on-click="remove($item)"` binds arguments on the server: the browser only gets an ID for the call.
- * Directives (`{{ }}`, `@foreach`, `@if`, see Directives) become such PHP first. Names resolve as in the
+ * Directives (`{{ }}`, `@foreach`, `@if`: Waypoint's template syntax, see Directives) become such PHP first. Names resolve as in the
  * component's class file: the template shares its namespace and its imports.
  * Compiled once when the plugin starts; the methods its `data-on-*` attributes name are the only ones the
  * browser can call.
@@ -84,12 +85,7 @@ final class Template
     public static function header(?string $class, array $uses = []): string
     {
         [$namespace, $imports] = self::scope($class, $uses);
-        $statements = array_map(
-            static fn (array $import) => 'use ' . ($import[0] !== 'class' ? "$import[0] " : '') . $import[1]
-                . ($import[2] !== substr((string) strrchr('\\' . $import[1], '\\'), 1) ? " as $import[2]" : '') . ';',
-            $imports,
-        );
-        return ($namespace !== '' ? "namespace $namespace; " : '') . implode(' ', $statements) . ' ';
+        return Compiler::header($namespace, $imports);
     }
 
     /**
@@ -126,7 +122,7 @@ final class Template
         foreach ($uses as $alias => $name) {
             $imports['class ' . strtolower($alias)] = ['class', $name, $alias];
         }
-        $imports['function classes'] ??= ['function', 'Waypoint\\Live\\classes', 'classes'];
+        $imports['function classes'] ??= ['function', 'Waypoint\\classes', 'classes'];
         $root = strstr($namespace, '\\', true) ?: $namespace;
         if ($root !== '') {
             $imports['class ' . strtolower($root)] ??= ['class', $root, $root];
