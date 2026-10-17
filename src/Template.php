@@ -213,6 +213,7 @@ final class Template
     public function render(object $component, Closure $child, ?Closure $action = null): string
     {
         $action ??= static fn (string $method): never => throw new LogicException("data-on-*=\"$method(...)\" needs a circuit to render in");
+        $level = ob_get_level();
         ob_start();
         try {
             // ponytail: eval on every render; a compiled file in a cache directory lets opcache keep it once renders get hot
@@ -229,7 +230,10 @@ final class Template
             }
             throw $e;
         } finally {
-            ob_end_clean();
+            // A class attribute with @class. buffers its value: an error inside leaves that buffer open
+            while (ob_get_level() > $level) {
+                ob_end_clean();
+            }
         }
     }
 

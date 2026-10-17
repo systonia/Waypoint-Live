@@ -277,23 +277,25 @@ final class DirectivesTest extends TestCase
 
     public function testConditionalClassesGoIntoTheClassAttribute(): void
     {
-        $call = static fn (string $conditions) => "\\Waypoint\\Live\\classes([$conditions])";
+        $call = static fn (string $static, string $conditions) => "\\Waypoint\\Live\\classes({$static}[$conditions])";
+        $caught = '(string) ob_get_clean(), ';
+        // The attribute's value goes through the same classes() call as the conditions
         $this->assertSame(
-            '<li class="row<?= rtrim(\' \' . ' . $call("'late' => (\$o->late), 'bg-green-100' => (\$o->ready())") . ') ?>">',
+            '<li class="<?php ob_start() ?>row<?php echo ' . $call($caught, "(\$o->late) ? 'late' : '', (\$o->ready()) ? 'bg-green-100' : ''") . ' ?>">',
             (new Directives('<li class="row" @class.late="$o->late" @class.bg-green-100="$o->ready()">'))->compile(),
         );
-        $this->assertSame('<li class="<?= ' . $call("'late' => (\$a)") . ' ?>">', (new Directives('<li @class.late="$a">'))->compile());
-        // After a class attribute that holds {{ }}, or one that is empty
+        $this->assertSame('<li class="<?php echo ' . $call('', "(\$a) ? 'late' : ''") . ' ?>">', (new Directives('<li @class.late="$a">'))->compile());
+        // A class attribute that holds {{ }}, or one that is empty
         $this->assertSame(
-            '<li class="row <?=  $x  ?><?= rtrim(\' \' . ' . $call("'a' => (\$b)") . ') ?>">',
+            '<li class="<?php ob_start() ?>row <?=  $x  ?><?php echo ' . $call($caught, "(\$b) ? 'a' : ''") . ' ?>">',
             (new Directives('<li class="row {{ $x }}" @class.a="$b">'))->compile(),
         );
-        $this->assertSame("<li class='<?= " . $call("'a' => (1)") . " ?>'>", (new Directives("<li class='' @class.a=\"1\">"))->compile());
+        $this->assertSame("<li class='<?php ob_start() ?><?php echo " . $call($caught, "(1) ? 'a' : ''") . " ?>'>", (new Directives("<li class='' @class.a=\"1\">"))->compile());
         // Every Tailwind name, and -> and > in a condition
         $names = ['md:w-1/2', 'hover:underline', 'bg-[#ff0000]', 'data-[state=open]:block', '[&>*]:p-4', '!font-bold'];
         $source = '<div ' . implode(' ', array_map(static fn (string $name) => "@class.$name=\"\$a->n > 3\"", $names)) . '>';
         $this->assertSame(
-            '<div class="<?= ' . $call(implode(', ', array_map(static fn (string $name) => "'$name' => (\$a->n > 3)", $names))) . ' ?>">',
+            '<div class="<?php echo ' . $call('', implode(', ', array_map(static fn (string $name) => "(\$a->n > 3) ? '" . htmlspecialchars($name) . "' : ''", $names))) . ' ?>">',
             (new Directives($source))->compile(),
         );
         // A tag over several lines keeps them
@@ -320,6 +322,18 @@ final class DirectivesTest extends TestCase
         $this->assertSame('<b class="row done md:w-1/2">', $render($source, true));
         $this->assertSame('<b class="row">', $render($source, false));
         $this->assertSame('<b class="">', $render('<b @class.done="$this->done">', false));
+        // With the attribute's own classes: each once, no space left over when they are empty, numbers too
+        $this->assertSame('<b class="row done">', $render('<b class="row  done" @class.done="$this->done">', true));
+        $this->assertSame('<b class="done">', $render('<b class="{{ \'\' }}" @class.done="$this->done">', true));
+        $this->assertSame('<b class="123 x">', $render('<b @class.123="$this->done" @class.x="true">', true));
+        // An error inside the attribute's value leaves no output buffer behind
+        $level = ob_get_level();
+        try {
+            $render('<b class="{{ throw new \\LogicException(\'no\') }}" @class.done="true">', true);
+            $this->fail('No exception');
+        } catch (\LogicException) {
+            $this->assertSame($level, ob_get_level());
+        }
         // The name is a string in the PHP, the output escaped
         $this->assertSame('<b class="content-[&#039;a&amp;b&#039;] a\\b">', $render('<b @class.content-[\'a&b\']="true" @class.a\\b="1">', true));
     }
@@ -333,7 +347,7 @@ final class DirectivesTest extends TestCase
         $this->assertSame(['1: <p> has two class attributes: the browser takes the first only'], self::problems('<p class="a" class="b" @class.c="$c">'));
         $this->assertSame(['1: @class.c comes twice in <p>'], self::problems('<p @class.c="$c" @class.c="$d">'));
         // The attributes as the browser reads them: class= inside another value is none, an unquoted one needs quotes
-        $this->assertSame('<p title=" class=\'t\'" class="<?= \\Waypoint\\Live\\classes([\'b\' => (1)]) ?>">', (new Directives('<p title=" class=\'t\'" @class.b="1">'))->compile());
+        $this->assertSame('<p title=" class=\'t\'" class="<?php echo \\Waypoint\\Live\\classes([(1) ? \'b\' : \'\']) ?>">', (new Directives('<p title=" class=\'t\'" @class.b="1">'))->compile());
         $this->assertSame(['1: <p class=...> needs quotes for @class.: class="..."'], self::problems('<p class=a @class.b="$b">'));
         $this->assertSame(['1: <p> has two class attributes: the browser takes the first only'], self::problems('<p class="a" CLASS=b @class.c="$c">'));
         $child = new Directives('<app-row @class.c="$c"></app-row>', ['app-row']);

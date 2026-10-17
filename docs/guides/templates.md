@@ -261,7 +261,7 @@ A class that depends on a condition is a `@class.` in the tag, with the class na
 <li class="row" @class.late="$order->late" @class.bg-green-100="$order->isReady()">
 ```
 
-renders `<li class="row late">` while `$order->late` is true and the order is not ready. The conditions go into the tag's `class` attribute; without one the tag gets one. The classes of the conditions come once each, joined by one space, with no space left over. When the state changes, the next render sends the new `class`.
+renders `<li class="row late">` while `$order->late` is true and the order is not ready. The conditions go into the tag's `class` attribute; without one the tag gets one. The attribute's own classes and those of the conditions go through one `classes()` call: each class comes once, joined by one space, with no space left over, also when the attribute's value is empty or comes from `{{ }}`. A class name may be a number (`@class.123`). When the state changes, the next render sends the new `class`.
 
 - The value is PHP like every expression in a template: `@class.late="$this->isLate()"`. A plain word such as `isLate` is no PHP.
 - The class name runs to the first `=` outside square brackets, so every Tailwind class works: `@class.md:w-1/2="..."`, `@class.hover:underline`, `@class.bg-[#ff0000]`, `@class.data-[state=open]:block`, `@class.[&>*]:p-4`, `@class.!font-bold`. The browser never sees `@class.`: the compiler removes it.

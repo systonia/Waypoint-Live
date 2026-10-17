@@ -316,12 +316,14 @@ final class Directives
             $this->problem($item['start'], "@class.$class belongs in an HTML start tag: <li @class.$class=\"\$order->late\">");
         }
         $found = array_diff_key($this->found, $stray);
-        usort($found, static fn (array $a, array $b) => $a['start'] <=> $b['start']);
+        // An insert at a value's start comes before a {{ }} that starts there too
+        usort($found, static fn (array $a, array $b) => [$a['start'], $a['end']] <=> [$b['start'], $b['end']]);
         $this->found = $found;
     }
 
     /**
-     * One tag's @class. as a classes() call: appended to its class attribute, or as one where the first was.
+     * One tag's @class. as one classes() call: with the value of its class attribute, which goes in first, or as a
+     * class attribute where the first @class. was.
      *
      * @param array<int, Found> $items
      */
@@ -352,20 +354,21 @@ final class Directives
             }
             $seen[$class] = true;
             // ponytail: the conditions move to one place, so in a tag over several lines an error in one is reported
-            // at the class attribute's line (or the first @class.); per-condition lines need them evaluated in place
-            $conditions[] = var_export($class, true) . ' => (' . substr($this->source, $from, $to - $from) . ')';
+            // at the class attribute's line (or the first @class.); per-condition lines need them evaluated in place.
+            // Escaped here: the class attribute's own value is HTML already, and classes() compares them as such
+            $conditions[] = '(' . substr($this->source, $from, $to - $from) . ') ? ' . var_export(htmlspecialchars($class, ENT_QUOTES | ENT_SUBSTITUTE), true) . " : ''";
             // With the spaces before it: no gaps left in the tag
             $this->found[$i] = ['code' => '', 'from' => $item['start'] - strspn(strrev(substr($this->source, 0, $item['start'])), " \t")] + $item;
         }
-        $call = '\\' . __NAMESPACE__ . '\\classes([' . implode(', ', $conditions) . '])';
+        $call = '\\' . __NAMESPACE__ . '\\classes(%s[' . implode(', ', $conditions) . '])';
         if ($classes === []) {
-            $this->found[$first]['code'] = " class=\"<?= $call ?>\"";
+            $this->found[$first]['code'] = ' class="<?php echo ' . sprintf($call, '') . ' ?>"';
             return;
         }
-        // Before the closing quote, with a space only when the value had one and the call adds something
+        // The attribute's value, {{ }} and PHP in it included, is caught and goes through classes() with the rest
         [, $from, $to] = $classes[0];
-        $empty = trim(substr($this->source, $at + $from, $to - $from)) === '';
-        $this->found[] = ['kind' => 'insert', 'start' => $at + $to, 'end' => $at + $to, 'code' => '<?= ' . ($empty ? $call : "rtrim(' ' . $call)") . ' ?>'];
+        $this->found[] = ['kind' => 'insert', 'start' => $at + $from, 'end' => $at + $from, 'code' => '<?php ob_start() ?>'];
+        $this->found[] = ['kind' => 'insert', 'start' => $at + $to, 'end' => $at + $to, 'code' => '<?php echo ' . sprintf($call, '(string) ob_get_clean(), ') . ' ?>'];
     }
 
     /**
