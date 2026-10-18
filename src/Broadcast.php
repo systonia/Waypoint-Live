@@ -11,11 +11,10 @@ use WeakMap;
  *
  * Under a Tenma with Tenma::publish(), the other workers render their tabs too, and with `tenma --pubsub` every
  * process on that Redis.
- *
- * ponytail: every tab of every app on the channel; a topic per broadcast once rendering every tab costs too much
  */
 final class Broadcast
 {
+    // ponytail: every tab of every app on the channel; a topic per broadcast once rendering every tab costs too much
     private const CHANNEL = 'waypoint-live';
 
     /** @var WeakMap<Circuit, true> The circuits whose browser is connected. */

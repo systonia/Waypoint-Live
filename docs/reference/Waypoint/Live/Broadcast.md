@@ -18,8 +18,6 @@ Inject it into a component or a service, or take it with `$app->get(Broadcast::c
 Under a Tenma with Tenma::publish(), the other workers render their tabs too, and with `tenma --pubsub` every
 process on that Redis.
 
-ponytail: every tab of every app on the channel; a topic per broadcast once rendering every tab costs too much
-
 ## Methods
 
 ### changed()
