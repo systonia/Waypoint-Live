@@ -2,9 +2,9 @@
 
 require __DIR__ . '/../vendor/autoload.php';
 
-// Tenma declares Tenma\Lsp\Provider at runtime; the tests run under plain PHP
+// Tenma declares Tenma\Lsp\Provider at runtime; under plain PHP the tests take the interfaces from tenma/stubs
 if (!interface_exists(\Tenma\Lsp\Provider::class)) {
-    foreach (['Provider', 'Tokens', 'Imports', 'Variables', 'Elements'] as $stub) {
-        require __DIR__ . "/Stubs/$stub.php";
+    foreach (glob(__DIR__ . '/../vendor/tenma/stubs/src/Tenma/Lsp/*.php') as $stub) {
+        require $stub;
     }
 }
