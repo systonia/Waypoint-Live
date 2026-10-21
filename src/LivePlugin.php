@@ -74,10 +74,10 @@ final class LivePlugin extends PluginBase implements ViewHelper, ClientAsset, Re
         $container->set($broadcast);
         // In dev a saved template shows at once, in every open tab and with its state: --watch restarts the
         // workers only for PHP that was included, and a template is read
-        if ($this->dev && class_exists(\Tenma::class, false)) {
+        if ($this->dev && class_exists(\Http\Server::class, false)) {
             // ponytail: polls 4 times a second; a watcher from Tenma once a second user needs one
             $checked = false;
-            \Tenma::setInterval(function () use ($broadcast, $logger, &$checked): void {
+            \Threading\Timer::every(0.25, function () use ($broadcast, $logger, &$checked): void {
                 $saved = false;
                 $changed = $this->components->reload(function (string $file, ?Throwable $e) use ($broadcast, $logger, &$saved): void {
                     $saved = true;
@@ -95,7 +95,7 @@ final class LivePlugin extends PluginBase implements ViewHelper, ClientAsset, Re
                     $checked = true;
                     $this->check($logger);
                 }
-            }, 0.25);
+            });
         }
     }
 
@@ -110,20 +110,20 @@ final class LivePlugin extends PluginBase implements ViewHelper, ClientAsset, Re
     {
         $before = count($this->failures);
         $this->failures = array_filter($this->failures, static fn (string $key) => !str_starts_with($key, "$tab "), ARRAY_FILTER_USE_KEY);
-        if (count($this->failures) !== $before && function_exists('Tenma\\Internal\\diagnostics')) {
-            \Tenma::diagnostics('waypoint-live', array_values($this->failures));
+        if (count($this->failures) !== $before && class_exists(\Development\Problems::class, false)) {
+            \Development\Problems::report('waypoint-live', array_values($this->failures));
         }
     }
 
     /**
-     * In dev: what Problems finds in all components goes to the terminal and the editor (Tenma::diagnostics()),
+     * In dev: what Problems finds in all components goes to the terminal and the editor (Development\Problems::report()),
      * or to the log under a Tenma without it.
      */
     private function check(Logger $logger): void
     {
         $problems = $this->components->check();
-        if (function_exists('Tenma\\Internal\\diagnostics')) {
-            \Tenma::diagnostics('waypoint-live:check', $problems);
+        if (class_exists(\Development\Problems::class, false)) {
+            \Development\Problems::report('waypoint-live:check', $problems);
             return;
         }
         foreach ($problems as $problem) {
@@ -133,7 +133,7 @@ final class LivePlugin extends PluginBase implements ViewHelper, ClientAsset, Re
 
     /**
      * @internal In dev: what failed under $key (a component of a tab), or null once it renders again. The
-     * editor shows the failures at their line, through Tenma::diagnostics() and `tenma lsp`.
+     * editor shows the failures at their line, through Development\Problems::report() and `tenma lsp`.
      *
      * @param array{file: string, line: int, message: string, class: string, cause: string, selector: ?string}|null $failure
      */
@@ -149,8 +149,8 @@ final class LivePlugin extends PluginBase implements ViewHelper, ClientAsset, Re
             $this->failures[$key] = ['file' => $failure['file'], 'line' => $failure['line'], 'message' => "$where: {$failure['class']}: {$failure['message']}"];
         }
         // Under a Tenma that has it; a list per worker, the last one wins
-        if (function_exists('Tenma\\Internal\\diagnostics')) {
-            \Tenma::diagnostics('waypoint-live', array_values($this->failures));
+        if (class_exists(\Development\Problems::class, false)) {
+            \Development\Problems::report('waypoint-live', array_values($this->failures));
         }
     }
 
@@ -160,7 +160,7 @@ final class LivePlugin extends PluginBase implements ViewHelper, ClientAsset, Re
      */
     public function reloaded(): string
     {
-        $path = function_exists('tenma_reloaded_by') ? \Tenma::reloadedBy() : null;
+        $path = function_exists('tenma_reloaded_by') ? \Development\Watch::reloadedBy() : null;
         $path = $path === null ? null : (realpath($path) ?: $path);
         foreach ($this->components->sources() as [$class, $template]) {
             if ($path !== null && in_array($path, [realpath($template), realpath((string) (new \ReflectionClass($class))->getFileName())], true)) {

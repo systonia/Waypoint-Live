@@ -18,7 +18,7 @@ arguments, a typo in a loop variable's member, at the template's line. Templates
 through TemplateChecks; this class keeps the names of before. In a `tenma.dev.php` hook, publish() shows
 PHPStan's findings in the editor:
 
-    new Tenma\Hook(
+    new Development\Hook(
         name: 'waypoint-check',
         inputs: ['src/**', 'views/**'],
         run: fn () => Waypoint\View\Check::publish(__DIR__),

@@ -669,7 +669,7 @@ final class CircuitTest extends TestCase
     }
 
     /**
-     * Declares the fake Tenma from Stubs/Tenma.php; only for tests that run in a separate process.
+     * Declares the fake channels and tasks from Stubs/Tenma.php; only for tests that run in a separate process.
      */
     private static function fakeTenma(): void
     {
@@ -681,11 +681,11 @@ final class CircuitTest extends TestCase
     {
         self::fakeTenma();
         $live = $this->plugin();
-        $this->assertSame([], \Tenma::$subscriptions);
+        $this->assertSame([], \FakeTenma::$subscriptions);
 
         $this->circuit(live: $live);
         $this->circuit(live: $live);
-        $this->assertCount(1, \Tenma::$subscriptions);
+        $this->assertCount(1, \FakeTenma::$subscriptions);
     }
 
     #[\PHPUnit\Framework\Attributes\RunInSeparateProcess]
@@ -694,17 +694,17 @@ final class CircuitTest extends TestCase
         self::fakeTenma();
         $live = $this->plugin();
         $mount = $this->message(['t' => 'mount', 'id' => 'c0', 'c' => 'test-chat', 'p' => []]);
-        \Tenma::$request = 1;
+        \FakeTenma::$request = 1;
         $first = $this->circuit(live: $live);
         $first->handle($mount);
         // The first tab navigates away: its WebSocket request ends, and what it started with it
         $first->detach();
-        \Tenma::endRequest(1);
+        \FakeTenma::endRequest(1);
 
-        \Tenma::$request = 2;
+        \FakeTenma::$request = 2;
         $second = $this->circuit(live: $live);
         $second->handle($mount);
-        \Tenma::$request = 3;
+        \FakeTenma::$request = 3;
         $third = $this->circuit(live: $live);
         $third->handle($mount);
         $this->sent = [];

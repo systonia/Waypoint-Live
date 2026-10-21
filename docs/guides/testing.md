@@ -168,7 +168,7 @@ Tab::for($this->app())->mount('app-order-board');     // the board is for signed
 
 ## Several tabs
 
-Two tabs of one app share its app-wide services, so a [broadcast](push.md#changes-for-every-tab) in one renders the other. Under Tenma it travels through `Tenma::publish()` and takes a moment; the bakery's `settle()` waits for it ([Testing broadcasts](push.md#testing)):
+Two tabs of one app share its app-wide services, so a [broadcast](push.md#changes-for-every-tab) in one renders the other. Under Tenma it travels through `Messaging\Channel::publish()` and takes a moment; the bakery's `settle()` waits for it ([Testing broadcasts](push.md#testing)):
 
 ```php
 $morning = $this->staffTab(self::STAFF)->mount('app-order-board');

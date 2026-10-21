@@ -9,7 +9,7 @@ use WeakMap;
  * tab only renders after its own actions and timers; `$broadcast->changed()` after a change reaches the others.
  * Inject it into a component or a service, or take it with `$app->get(Broadcast::class)`.
  *
- * Under a Tenma with Tenma::publish(), the other workers render their tabs too, and with `tenma --pubsub` every
+ * Under a Tenma with Messaging\Channel::publish(), the other workers render their tabs too, and with `tenma --pubsub` every
  * process on that Redis.
  */
 final class Broadcast
@@ -33,7 +33,7 @@ final class Broadcast
     public function changed(): void
     {
         if (self::acrossWorkers()) {
-            \Tenma::publish(self::CHANNEL, '');
+            new \Messaging\Channel(self::CHANNEL)->publish('');
         } else {
             $this->changedHere();
         }
@@ -42,12 +42,12 @@ final class Broadcast
     /** Outside Tenma (tests) or under a Tenma without publish(): only this worker's tabs. */
     private static function acrossWorkers(): bool
     {
-        // Tenma's own function behind Tenma::publish(), there since publish() is
+        // Tenma's own function behind Messaging\Channel::publish(), there since publish() is
         return function_exists('tenma_pubsub');
     }
 
     /**
-     * Only this worker's tabs render: in a Tenma::subscribe() callback that has just brought this worker's state
+     * Only this worker's tabs render: in a Messaging\Channel::subscribe() callback that has just brought this worker's state
      * up to date. Every worker runs it, so changed() would render every tab once per worker.
      */
     public function changedHere(): void
@@ -77,7 +77,7 @@ final class Broadcast
         // Detached, it belongs to no request: one made in this tab's request would end when the tab closes.
         if (!$this->subscribed && self::acrossWorkers()) {
             $this->subscribed = true;
-            \Tenma::detach(fn () => \Tenma::subscribe(self::CHANNEL, fn () => $this->changedHere()));
+            \Threading\Task::detach(fn () => new \Messaging\Channel(self::CHANNEL)->subscribe(fn () => $this->changedHere()));
         }
         $this->circuits[$circuit] = true;
     }

@@ -60,7 +60,7 @@ PHPStan is too slow to run on every keystroke, but a Tenma build hook can run it
 <?php
 
 return [
-    new Tenma\Hook(
+    new Development\Hook(
         name: 'waypoint-check',
         inputs: ['src/**', 'views/**'],
         run: fn () => Waypoint\View\Check::publish(__DIR__),
@@ -70,7 +70,7 @@ return [
 
 The bakery's `tenma.dev.php` has one hook already, for its stylesheet; this one goes next to it.
 
-`Waypoint\View\Check::publish()` runs PHPStan on the templates and views and hands the findings to `Tenma::diagnostics()`, which `tenma lsp` shows at their line. The checks of the first kind already reach the editor while typing, through the language server ([Development tools](development.md#in-the-editor)).
+`Waypoint\View\Check::publish()` runs PHPStan on the templates and views and hands the findings to `Development\Problems::report()`, which `tenma lsp` shows at their line. The checks of the first kind already reach the editor while typing, through the language server ([Development tools](development.md#in-the-editor)).
 
 ## The PHPStan extension
 

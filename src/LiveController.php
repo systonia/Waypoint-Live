@@ -20,7 +20,7 @@ final class LiveController
     private const PARK_SECONDS = 180.0;
     private const MAX_PARKED = 100;
 
-    /** @var array<string, array{Circuit, \Tenma\Timer}> Circuits whose browser may come back, oldest first. */
+    /** @var array<string, array{Circuit, \Threading\Timer}> Circuits whose browser may come back, oldest first. */
     private static array $parked = [];
 
     /** This process, in dev: the browser sees a new one after a restart (--watch) and loads the page again. */
@@ -41,11 +41,11 @@ final class LiveController
         }
         $live = $this->live;
         $logger = $this->logger;
-        $res->upgrade(\Tenma\Http\Response::websocket(static function (\Tenma\Http\WebSocket $socket) use ($live, $logger, $req): void {
+        $res->upgrade(\Http\Response::websocket(static function (\Http\WebSocket $socket) use ($live, $logger, $req): void {
             $send = static function (string $message) use ($socket): void {
                 try {
                     $socket->send($message);
-                } catch (\Tenma\Http\ConnectionClosed) {
+                } catch (\Http\ConnectionClosed) {
                     // Rendered after the browser left; the receive loop below ends the connection
                 }
             };
@@ -98,8 +98,8 @@ final class LiveController
         }
         // Detached from this request: the connection is over, and Tenma ends the request's own timers with it
         $expiry = null;
-        \Tenma::detach(static function () use ($token, &$expiry): void {
-            $expiry = \Tenma::setTimeout(static fn () => self::unpark($token)?->close(), self::PARK_SECONDS);
+        \Threading\Task::detach(static function () use ($token, &$expiry): void {
+            $expiry = \Threading\Timer::after(self::PARK_SECONDS, static fn () => self::unpark($token)?->close());
         });
         if ($expiry !== null) {
             self::$parked[$token] = [$circuit, $expiry];

@@ -225,23 +225,23 @@ public function advance(Order $order): void
 
 Outside a component, `$app->get(Broadcast::class)`. A tab whose connection dropped renders when it comes back.
 
-With several workers, `changed()` goes out through `Tenma::publish()`: every worker renders its tabs, with
+With several workers, `changed()` goes out through `Messaging\Channel::publish()`: every worker renders its tabs, with
 `tenma --pubsub redis://host` every process on that Redis too. Each worker has its own memory, though: that is
 enough for state in Postgres or Redis, as the bakery's orders under `tenma --workers 2`. State in memory goes to every worker with its own message, and each worker
 renders its tabs once it has it, with `changedHere()`:
 
 ```php
 // At startup: runs in every worker
-Tenma::subscribe('oven', function (string $news) use ($specials, $broadcast) {
+new Messaging\Channel('oven')->subscribe(function (string $news) use ($specials, $broadcast) {
     $specials->news[] = $news;
     $broadcast->changedHere();
 });
 
 // In the action, instead of changed()
-Tenma::publish('oven', $news);
+new Messaging\Channel('oven')->publish($news);
 ```
 
-Under a Tenma without `Tenma::publish()`, `changed()` only renders the tabs of the own worker.
+Under a Tenma without `Messaging\Channel::publish()`, `changed()` only renders the tabs of the own worker.
 
 ## Components of a plugin
 
@@ -470,7 +470,7 @@ level 6 without one. The generated files go to the system's temp directory, neve
 fails a CI step. In a `tenma.dev.php` hook, PHPStan's findings reach the editor as you save:
 
 ```php
-new Tenma\Hook(
+new Development\Hook(
     name: 'waypoint-check',
     inputs: ['src/**', 'views/**'],
     run: fn () => Waypoint\View\Check::publish(__DIR__),
@@ -490,11 +490,11 @@ With `APP_ENV=development` (Waypoint's `Environment::isDev()`) and `tenma --watc
   their components and these get their state back: the properties with plain values (numbers, strings, arrays
   of them), children by their selector and key. A property the new code no longer has, or whose type no longer
   takes the value, starts over and is logged. Any other file loads the open pages again. Needs a Tenma with
-  `Tenma::reloadedBy()`; without it, the pages always load again.
+  `Development\Watch::reloadedBy()`; without it, the pages always load again.
 - Every component and its template are checked once the app has started and after every saved template:
   actions the component lacks, attributes that are no input of the child, tags that stay as they are, PHP that
   does not parse, directives that do not close, timers that cannot run, inputs the page cannot set. The
-  problems go to the terminal and, through `Tenma::diagnostics()`, to the editor, also for templates that are
+  problems go to the terminal and, through `Development\Problems::report()`, to the editor, also for templates that are
   not open. A page that uses a tag close to a selector, or an attribute close to an input, gets a warning in
   the log.
 - An error shows in the page: what failed, in which component and after which event, the template's lines
@@ -505,7 +505,7 @@ With `APP_ENV=development` (Waypoint's `Environment::isDev()`) and `tenma --watc
   ```php
   $app->configure(fn (LiveOptions $live) => $live->editor = 'vscodium://file/{file}:{line}');
   ```
-- The same errors show in the editor at their line, under a Tenma with `Tenma::diagnostics()` and `tenma lsp`,
+- The same errors show in the editor at their line, under a Tenma with `Development\Problems::report()` and `tenma lsp`,
   until the component renders again or the template compiles.
 
 - `localStorage.liveDebug = '1'` (or `?live-debug` in the URL) logs every action in the browser's console:

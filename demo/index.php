@@ -18,5 +18,5 @@ $app->configure(function (RendererOptions $opts) {
 });
 $app->attach([HomeController::class]);
 
-Tenma::serve(8090, $app);
+new \Http\Server(8090, $app)->start();
 echo "Live components: http://localhost:8090\n";

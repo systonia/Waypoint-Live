@@ -91,7 +91,7 @@ final class Circuit
         $this->objects = new WeakMap();
         $this->connection = new Connection($request ?? Request::fromParts('GET', '/'));
         $this->services->put($this->connection);
-        $this->every = $every ?? static fn (float $seconds, Closure $work): Closure => \Tenma::setInterval($work, $seconds)->cancel(...);
+        $this->every = $every ?? static fn (float $seconds, Closure $work): Closure => \Threading\Timer::every($seconds, $work)->cancel(...);
         $this->broadcast = $this->services->get(Broadcast::class);
         $this->broadcast->connect($this);
     }
@@ -512,8 +512,8 @@ final class Circuit
             static fn (): string => $data,
             static function (string $path) use ($data): void {
                 // Under Tenma without blocking the worker
-                if (class_exists(\Tenma\Fs::class, false)) {
-                    \Tenma\Fs::writeFile($path, $data);
+                if (class_exists(\FileSystem\FileInfo::class, false)) {
+                    new \FileSystem\FileInfo($path)->write($data);
                 } elseif (file_put_contents($path, $data) === false) {
                     throw new \RuntimeException("Could not write the upload to '$path'");
                 }

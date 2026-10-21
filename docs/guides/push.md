@@ -1,6 +1,6 @@
 ---
 title: Timers, broadcasts and server push
-description: "Update a component from the server with #[Every] timers, render other tabs with Broadcast, and reach every worker with Tenma::publish()."
+description: "Update a component from the server with #[Every] timers, render other tabs with Broadcast, and reach every worker with Messaging\Channel::publish()."
 order: 100
 ---
 
@@ -144,7 +144,7 @@ Each tab renders with its own connection's request values (its locale, its reque
 
 ## Several workers
 
-Each Tenma worker has its own memory, its own tabs and its own instance of every app-wide service. Under a Tenma with `Tenma::publish()`, `changed()` goes out through it: every worker renders its tabs, and with `tenma --pubsub redis://host` every process on that Redis too. A worker subscribes to these broadcasts when its first tab connects, so a script that boots the app without a server (a CLI task, a test) ends as usual.
+Each Tenma worker has its own memory, its own tabs and its own instance of every app-wide service. Under a Tenma with `Messaging\Channel::publish()`, `changed()` goes out through it: every worker renders its tabs, and with `tenma --pubsub redis://host` every process on that Redis too. A worker subscribes to these broadcasts when its first tab connects, so a script that boots the app without a server (a CLI task, a test) ends as usual.
 
 That is enough when the shared state lives outside the workers, in Postgres or Redis: each worker renders from the same source. The bakery runs with `tenma --workers 2 index.php`, and its `tests/SiteTest.php` plays it through: a click on the board moves the customer's page on, whichever worker serves each tab.
 
@@ -216,7 +216,7 @@ With one worker that is all. With several, send the change itself to every worke
 // In index.php, before $app->serve(): runs in every worker
 $specials = $app->get(Specials::class);
 $broadcast = $app->get(Broadcast::class);
-Tenma::subscribe('oven', function (string $news) use ($specials, $broadcast) {
+new Messaging\Channel('oven')->subscribe(function (string $news) use ($specials, $broadcast) {
     $specials->news[] = $news;
     $broadcast->changedHere();
 });
@@ -228,14 +228,14 @@ public function announce(array $form): void
 {
     $news = trim($form['news'] ?? '');
     if ($news !== '') {
-        Tenma::publish('oven', mb_substr($news, 0, 200));
+        new Messaging\Channel('oven')->publish(mb_substr($news, 0, 200));
     }
 }
 ```
 
 `changedHere()` renders only the tabs of the worker it runs in. Calling `changed()` in a subscription instead would render every tab once per worker.
 
-Under a Tenma without `Tenma::publish()`, and in tests under plain PHP, `changed()` renders the tabs of its own worker at once. Tests that run under Tenma, as the bakery's do, see the broadcast go through `Tenma::publish()`, so it arrives a moment later (below).
+Under a Tenma without `Messaging\Channel::publish()`, and in tests under plain PHP, `changed()` renders the tabs of its own worker at once. Tests that run under Tenma, as the bakery's do, see the broadcast go through `Messaging\Channel::publish()`, so it arrives a moment later (below).
 
 ## Testing
 
@@ -257,10 +257,10 @@ $counter->submit('form', ['news' => 'Pretzels, still warm']);
 $shop->assertSee('Pretzels, still warm');
 ```
 
-The bakery runs its PHPUnit tests under Tenma, for Postgres, so its broadcasts travel through `Tenma::publish()`. Its test case waits a moment for them (`tests/Support/AppTestCase.php`):
+The bakery runs its PHPUnit tests under Tenma, for Postgres, so its broadcasts travel through `Messaging\Channel::publish()`. Its test case waits a moment for them (`tests/Support/AppTestCase.php`):
 
 ```php
-/** What the app does after an order changed. The broadcast travels through Tenma::publish(), so it takes a moment. */
+/** What the app does after an order changed. The broadcast travels through Messaging\Channel::publish(), so it takes a moment. */
 protected function broadcast(): void
 {
     $this->app()->get(Broadcast::class)->changed();
@@ -270,7 +270,7 @@ protected function broadcast(): void
 /** Lets broadcasts that are on their way reach the tabs. */
 protected function settle(): void
 {
-    \Tenma::sleep(0.2);
+    Threading\Task::delay(0.2);
 }
 ```
 

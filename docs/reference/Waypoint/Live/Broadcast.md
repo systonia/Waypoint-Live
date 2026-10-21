@@ -15,7 +15,7 @@ Renders every connected tab again: for state that tabs share through an app-wide
 tab only renders after its own actions and timers; `$broadcast->changed()` after a change reaches the others.
 Inject it into a component or a service, or take it with `$app->get(Broadcast::class)`.
 
-Under a Tenma with Tenma::publish(), the other workers render their tabs too, and with `tenma --pubsub` every
+Under a Tenma with Messaging\Channel::publish(), the other workers render their tabs too, and with `tenma --pubsub` every
 process on that Redis.
 
 ## Methods
@@ -34,5 +34,5 @@ Every connected tab renders, and sends the components whose HTML changed.
 public function changedHere(): void
 ```
 
-Only this worker's tabs render: in a Tenma::subscribe() callback that has just brought this worker's state
+Only this worker's tabs render: in a Messaging\Channel::subscribe() callback that has just brought this worker's state
 up to date. Every worker runs it, so changed() would render every tab once per worker.

@@ -18,7 +18,7 @@ In production none of this happens: the browser only learns that a component fai
 
 - **A saved template** renders at once in every open tab, and the components keep their state. Live looks for changed templates four times a second, by content, so a save without a change does nothing.
 - **A template that no longer compiles** keeps its last working version. The mistake shows in the page and in the editor until the template is saved without it.
-- **A saved PHP file** restarts the workers (`tenma --watch`). If it was a component's class, the open pages keep their components and these get their state back: the properties with plain values (numbers, strings, booleans, arrays of them), children by selector and key. A property that the new code no longer has, or whose type no longer takes the old value, starts over, and the log says so. Services, objects and closures start over too. This needs a Tenma with `Tenma::reloadedBy()`; without it, the pages load again.
+- **A saved PHP file** restarts the workers (`tenma --watch`). If it was a component's class, the open pages keep their components and these get their state back: the properties with plain values (numbers, strings, booleans, arrays of them), children by selector and key. A property that the new code no longer has, or whose type no longer takes the old value, starts over, and the log says so. Services, objects and closures start over too. This needs a Tenma with `Development\Watch::reloadedBy()`; without it, the pages load again.
 - **Any other saved file** (a service, a view, the layout) loads the open pages again.
 
 ## Checks
@@ -36,7 +36,7 @@ Once the app has started, and after every saved template, Live checks every comp
 - a `#[Every]` method that cannot run as a timer,
 - an `#[Input]` property that is not public, static or readonly.
 
-The problems go to the terminal and, under a Tenma with `Tenma::diagnostics()`, to the editor, also for templates that are not open. A page that uses a tag close to a selector (`<app-cart-bagde>`) or an attribute close to an input gets a warning in the log, once per worker.
+The problems go to the terminal and, under a Tenma with `Development\Problems::report()`, to the editor, also for templates that are not open. A page that uses a tag close to a selector (`<app-cart-bagde>`) or an attribute close to an input gets a warning in the log, once per worker.
 
 ## Errors in the page
 
@@ -59,7 +59,7 @@ $app->configure(fn (LiveOptions $live) => $live->editor = 'vscodium://file/{file
 // PhpStorm: 'phpstorm://open?file={file}&line={line}'
 ```
 
-Under a Tenma with `Tenma::diagnostics()` and `tenma lsp`, the same errors show in the editor at their line, until the component renders again or the template compiles.
+Under a Tenma with `Development\Problems::report()` and `tenma lsp`, the same errors show in the editor at their line, until the component renders again or the template compiles.
 
 ## In the editor
 

@@ -4,7 +4,7 @@ namespace Waypoint\Live;
 
 use ReflectionClass;
 use ReflectionMethod;
-use Tenma\Lsp\{Imports, Provider, Tokens};
+use Lsp\{Imports, Provider, Tokens};
 
 /**
  * @internal Live in the editor, through `tenma lsp` (composer.json names it under extra.tenma.lsp): `$this` in a
