@@ -856,12 +856,12 @@ final class CircuitTest extends TestCase
 
     public function testTextThatIsNoUtf8IsPrintedWithReplacementCharacters(): void
     {
-        $this->assertSame("ok\u{FFFD} &lt;", \Waypoint\Live\Template::escape("ok\xff <"));
+        $this->assertSame("ok\u{FFFD} &lt;", \Waypoint\Http\View::escape("ok\xff <"));
     }
 
     public function testHtmlIsPrintedAsItIsAndEverythingElseEscaped(): void
     {
-        $this->assertSame('<b>bold</b>&lt;i&gt;', \Waypoint\Live\Template::escape(new \Waypoint\Live\Html('<b>bold</b>'), '<i>'));
-        $this->assertSame('<b>bold</b>', \Waypoint\Live\Template::escape(new \Waypoint\Html('<b>bold</b>')));
+        $this->assertSame('<b>bold</b>&lt;i&gt;', \Waypoint\Http\View::escape(new \Waypoint\Html('<b>bold</b>'), '<i>'));
+        $this->assertSame('<b>bold</b>', \Waypoint\Http\View::escape(new \Waypoint\Html('<b>bold</b>')));
     }
 }

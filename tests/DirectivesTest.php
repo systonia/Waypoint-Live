@@ -185,7 +185,7 @@ final class DirectivesTest extends TestCase
         $this->assertSame("<p>Calm OPEN open <b> Calm Closed</p>\n<button data-on-click=\"toggle\" class=\"btn phase-[open]:ring\">Toggle</button>\n", $template->render(new Board(), static fn () => ''));
         // Group and function imports one by one, the trait in the class body is none
         $this->assertSame(
-            'namespace Waypoint\Live\Tests\Fixtures; use Waypoint\Live\Component; use Waypoint\Live\Html as Markup; '
+            'namespace Waypoint\Live\Tests\Fixtures; use Waypoint\Html as Markup; use Waypoint\Live\Component; '
                 . 'use Waypoint\Live\Tests\Fixtures\Sub\Phase; use function strtoupper as shout; use function Waypoint\\classes; use Waypoint; ',
             Template::header(Board::class),
         );
@@ -198,10 +198,10 @@ final class DirectivesTest extends TestCase
 
     public function testUseImportsAClassForTheTemplate(): void
     {
-        $source = "@use (Waypoint\\Live\\Tests\\Fixtures\\Sub\\Phase as Markup)\n@use (\\Waypoint\\Live\\Html)\n<p>{{ Markup::Closed->name }} {{ new Html('<b>') }}</p>";
+        $source = "@use (Waypoint\\Live\\Tests\\Fixtures\\Sub\\Phase as Markup)\n@use (\\Waypoint\\Html)\n<p>{{ Markup::Closed->name }} {{ new Html('<b>') }}</p>";
         $directives = new Directives($source);
         $this->assertSame("<?php \n?><?php \n?><p><?=  Markup::Closed->name  ?> <?=  new Html('<b>')  ?></p>", $directives->compile());
-        $this->assertSame(['Markup' => 'Waypoint\\Live\\Tests\\Fixtures\\Sub\\Phase', 'Html' => 'Waypoint\\Live\\Html'], $directives->uses);
+        $this->assertSame(['Markup' => 'Waypoint\\Live\\Tests\\Fixtures\\Sub\\Phase', 'Html' => 'Waypoint\\Html'], $directives->uses);
         // The template's alias wins over the class file's Html as Markup
         $header = Template::header(Board::class, $directives->uses);
         $this->assertStringContainsString('use Waypoint\\Live\\Tests\\Fixtures\\Sub\\Phase as Markup; ', $header);
@@ -220,7 +220,7 @@ final class DirectivesTest extends TestCase
     {
         $this->assertSame(['2: @use needs a class: @use (App\\Status)'], self::problems("\n@use App\\Status"));
         $this->assertSame(['1: @use (App\\Status as): name a class, as in @use (App\\Status) or @use (App\\Status as State)'], self::problems('@use (App\\Status as)'));
-        $this->assertSame(['2: @use (Waypoint\\Live\\Template as html): html is imported above already'], self::problems("@use (Waypoint\\Live\\Html)\n@use (Waypoint\\Live\\Template as html)"));
+        $this->assertSame(['2: @use (Waypoint\\Live\\Template as html): html is imported above already'], self::problems("@use (Waypoint\\Html)\n@use (Waypoint\\Live\\Template as html)"));
         $missing = (new Directives('@use (App\\Missing)'))->problems;
         $this->assertSame(['1: @use (App\\Missing): there is no class, enum, interface or trait App\\Missing'], self::problems('@use (App\\Missing)'));
         $this->assertSame('warning', $missing[0]['severity']);

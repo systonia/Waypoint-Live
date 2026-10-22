@@ -40,8 +40,8 @@ final class EditorTest extends TestCase
         $template = self::FIXTURES . '/Board.Template.php';
         $this->assertSame([
             '' => 'Waypoint\\Live\\Tests\\Fixtures',
+            'Markup' => 'Waypoint\\Html',
             'Component' => 'Waypoint\\Live\\Component',
-            'Markup' => 'Waypoint\\Live\\Html',
             'Phase' => 'Waypoint\\Live\\Tests\\Fixtures\\Sub\\Phase',
             'Waypoint' => 'Waypoint',
         ], $this->editor()->imports($template, ''));

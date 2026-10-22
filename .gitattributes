@@ -1,0 +1,12 @@
+* text=auto
+
+# Left out of Composer installs; src/, assets/, bin/, extension.neon, README and licenses ship
+/tests                 export-ignore
+/docs                  export-ignore
+/demo                  export-ignore
+/phpunit.xml           export-ignore
+/phpstan.neon          export-ignore
+/cliff.toml            export-ignore
+/.phpunit.result.cache export-ignore
+/.gitattributes        export-ignore
+/.gitignore            export-ignore

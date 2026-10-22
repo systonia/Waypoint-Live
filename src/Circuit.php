@@ -84,8 +84,7 @@ final class Circuit
      */
     public function __construct(private LivePlugin $live, private Closure $send, private Closure $report, ?Closure $every = null, ?Request $request = null, ?Closure $close = null)
     {
-        $this->close = $close ?? static function (): void {
-        };
+        $this->close = $close ?? static fn () => null;
         $this->context = FiberLocal::capture();
         $this->services = $live->scope();
         $this->objects = new WeakMap();
@@ -112,10 +111,8 @@ final class Circuit
                 throw new InvalidArgumentException("<$selector> input '$name': a page passes numbers, strings, booleans, null and arrays of them, not " . get_debug_type($value) . '. The browser sends them back on connect; pass an ID and let the component load the object');
             }
         }
-        $circuit = new self($live, static function (): void {
-        }, static function (): void {
-        }, static fn (): Closure => static function (): void {
-        }, $request);
+        $none = static fn () => null;
+        $circuit = new self($live, $none, $none, static fn (): Closure => $none, $request);
         [$component, $template] = $live->create($selector, $inputs, $circuit->services);
         $html = $circuit->html($circuit->node('', $selector, $component, $template, null));
         if ($circuit->connection->takeNavigation() !== null) {
@@ -334,8 +331,7 @@ final class Circuit
             }
             $node->timers = [];
         }
-        $this->send = static function (): void {
-        };
+        $this->send = static fn () => null;
         $this->broadcast->disconnect($this);
     }
 

@@ -149,7 +149,7 @@ After the bakery's `src/Components/OrderBoard.Template.php`, shortened:
   runs to the first `=` outside `[ ]`, so Tailwind classes like `md:w-1/2` work. The attribute's own classes
   go through the same `classes()`, so each class comes once.
   `classes('step', ['current' => $step === $order->status])` builds the same list in PHP, in every template without an import
-  (`Waypoint\classes()`; `Waypoint\Live\classes()` is another name for it).
+  (`Waypoint\classes()`).
 - A block that does not close, or closes another one, keeps the template from compiling, with its line; so does
   a `/*` without its `*/` inside `{{ }}`, which would comment out the template up to the next `*/`. In the
   editor these show while typing; `@forech` gets a hint and stays text.

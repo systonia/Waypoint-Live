@@ -4,6 +4,7 @@ namespace Waypoint\Live;
 
 use ParseError;
 use ReflectionClass;
+use Waypoint\View\Check;
 
 /**
  * @internal Mistakes in a template that the compiler lets through and that would fail only later, at a
@@ -28,7 +29,7 @@ final class Problems
         $directives = new Directives($source, array_keys($components));
         $php = $directives->compile();
         // A line comment in an echo tag also breaks the syntax: one message for it is enough
-        $comments = self::comments($php);
+        $comments = Check::comments($php, 'template');
         $problems = [
             ...$directives->problems,
             ...($comments !== [] || in_array('error', array_column($directives->problems, 'severity'), true) ? $comments : self::syntax($source, array_keys($components), $class)),
@@ -99,27 +100,6 @@ final class Problems
         }
     }
 
-    /** @return list<array{line: int, message: string, severity: 'error'}> */
-    private static function comments(string $source): array
-    {
-        $problems = [];
-        $echo = false;
-        foreach (token_get_all($source) as $token) {
-            if (!is_array($token)) {
-                continue;
-            }
-            $echo = match ($token[0]) {
-                T_OPEN_TAG_WITH_ECHO => true,
-                T_CLOSE_TAG => false,
-                default => $echo,
-            };
-            if ($echo && $token[0] === T_COMMENT && !str_starts_with($token[1], '/*')) {
-                $problems[] = ['line' => $token[2], 'message' => 'A line comment inside <?= ?> also comments out what the template adds before ?>: use /* */', 'severity' => 'error'];
-            }
-        }
-        return $problems;
-    }
-
     /**
      * @param class-string $class
      * @return list<array{line: int, message: string, severity: 'error'|'warning'}>
@@ -128,12 +108,7 @@ final class Problems
     {
         $reflection = new ReflectionClass($class);
         $short = $reflection->getShortName();
-        $callable = [];
-        foreach ($reflection->getMethods() as $method) {
-            if ($method->isPublic() && !$method->isStatic() && !str_starts_with($method->getName(), '__')) {
-                $callable[] = $method->getName();
-            }
-        }
+        $callable = array_column(LivePlugin::actions($class), 'name');
         $problems = [];
         // What the compiler wires up: markup in a comment names no method
         foreach (Template::wiring($php) as ['event' => $event, 'value' => $value, 'line' => $line, 'offset' => $offset]) {
@@ -181,15 +156,15 @@ final class Problems
     private static function children(string $source, array $components): array
     {
         $problems = [];
-        $value = '"(?:<\?=.*?\?>|[^"])*"';
+        $value = '"' . Template::VALUE . '"';
         preg_match_all('/<([a-z][a-z0-9]*(?:-[a-z0-9]+)+)(?=[\s>\/])/', $source, $tags, PREG_OFFSET_CAPTURE | PREG_SET_ORDER);
         foreach ($tags as [[$start, $offset], [$selector]]) {
             $line = self::line($source, $offset);
             $class = $components[$selector] ?? null;
             if ($class === null) {
-                $close = self::didYouMean($selector, array_keys($components), '', '<', '>');
-                if ($close !== '') {
-                    $problems[] = ['line' => $line, 'message' => "<$selector> is no component$close", 'severity' => 'warning'];
+                $unknown = self::unknown($selector, $components);
+                if ($unknown !== null) {
+                    $problems[] = ['line' => $line, 'message' => $unknown, 'severity' => 'warning'];
                 }
                 continue;
             }
@@ -199,10 +174,7 @@ final class Problems
                 $problems[] = ['line' => $line, 'message' => "<$selector> stays as it is: a component's tag needs attributes in double quotes and an empty body, <$selector ...></$selector>", 'severity' => 'error'];
                 continue;
             }
-            $inputs = array_values(array_filter(
-                array_map(static fn (\ReflectionProperty $p) => $p->getName(), (new ReflectionClass($class))->getProperties()),
-                static fn (string $name) => LivePlugin::isInput($class, $name),
-            ));
+            $inputs = LivePlugin::inputs($class);
             preg_match_all('/([A-Za-z_][\w.:-]*)(?:=' . $value . ')?/s', $m[1], $attributes);
             foreach ($attributes[1] as $name) {
                 if ($name !== 'key' && !in_array($name, $inputs, true)) {
@@ -229,9 +201,9 @@ final class Problems
         foreach ($tags as [, $selector, $attributes]) {
             $class = $components[$selector] ?? null;
             if ($class === null) {
-                $close = self::didYouMean($selector, array_keys($components), '', '<', '>');
-                if ($close !== '') {
-                    $messages[] = "<$selector> is no component$close Or is it missing from new LivePlugin([...])?";
+                $unknown = self::unknown($selector, $components);
+                if ($unknown !== null) {
+                    $messages[] = "$unknown Or is it missing from new LivePlugin([...])?";
                 }
                 continue;
             }
@@ -239,10 +211,7 @@ final class Problems
                 $messages[] = "<$selector> stays as it is: a component's tag needs attributes in double quotes and an empty body, <$selector ...></$selector>";
                 continue;
             }
-            $inputs = array_values(array_filter(
-                array_map(static fn (\ReflectionProperty $p) => $p->getName(), (new ReflectionClass($class))->getProperties()),
-                static fn (string $name) => LivePlugin::isInput($class, $name),
-            ));
+            $inputs = LivePlugin::inputs($class);
             preg_match_all('/\s([A-Za-z_][\w.:-]*)=/', $attributes, $names);
             foreach ($names[1] as $name) {
                 $close = self::didYouMean($name, $inputs, '');
@@ -252,6 +221,17 @@ final class Problems
             }
         }
         return array_values(array_unique($messages));
+    }
+
+    /**
+     * A tag that is no component but close to a selector, as a typo; null for any other tag.
+     *
+     * @param array<string, class-string> $components
+     */
+    private static function unknown(string $selector, array $components): ?string
+    {
+        $close = self::didYouMean($selector, array_keys($components), '', '<', '>');
+        return $close !== '' ? "<$selector> is no component$close" : null;
     }
 
     /** @param list<string> $candidates */

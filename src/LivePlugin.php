@@ -4,14 +4,15 @@ namespace Waypoint\Live;
 
 use InvalidArgumentException;
 use ReflectionClass;
+use ReflectionMethod;
 use ReflectionProperty;
 use Throwable;
-use Waypoint\Attributes\{Authenticated, Permissions, Role};
 use Waypoint\Container;
 use Waypoint\Environment;
 use Waypoint\Logger;
 use Waypoint\Http\{Request, Response};
 use Waypoint\Plugin\{ClientAsset, PluginBase, ResponseHook, ViewHelper};
+use Waypoint\RouteCompiler;
 use Waypoint\Routing\{PropertyInjector, RouteGuard};
 
 /**
@@ -110,8 +111,8 @@ final class LivePlugin extends PluginBase implements ViewHelper, ClientAsset, Re
     {
         $before = count($this->failures);
         $this->failures = array_filter($this->failures, static fn (string $key) => !str_starts_with($key, "$tab "), ARRAY_FILTER_USE_KEY);
-        if (count($this->failures) !== $before && class_exists(\Development\Problems::class, false)) {
-            \Development\Problems::report('waypoint-live', array_values($this->failures));
+        if (count($this->failures) !== $before) {
+            $this->report();
         }
     }
 
@@ -148,7 +149,12 @@ final class LivePlugin extends PluginBase implements ViewHelper, ClientAsset, Re
             $where = ($failure['selector'] !== null ? "<{$failure['selector']}> " : '') . $failure['cause'];
             $this->failures[$key] = ['file' => $failure['file'], 'line' => $failure['line'], 'message' => "$where: {$failure['class']}: {$failure['message']}"];
         }
-        // Under a Tenma that has it; a list per worker, the last one wins
+        $this->report();
+    }
+
+    /** The failures to the editor, under a Tenma that has it; a list per worker, the last one wins. */
+    private function report(): void
+    {
         if (class_exists(\Development\Problems::class, false)) {
             \Development\Problems::report('waypoint-live', array_values($this->failures));
         }
@@ -228,27 +234,8 @@ final class LivePlugin extends PluginBase implements ViewHelper, ClientAsset, Re
      */
     public function guard(string $class, ?string $method, Request $request): void
     {
-        $lineage = [];
-        for ($reflection = new ReflectionClass($class); $reflection !== false; $reflection = $reflection->getParentClass()) {
-            $lineage[] = $reflection;
-        }
-        $members = [...($method !== null ? [new \ReflectionMethod($class, $method)] : []), ...$lineage];
-        $find = static function (string $attribute) use ($members): ?object {
-            foreach ($members as $member) {
-                $found = $member->getAttributes($attribute);
-                if ($found !== []) {
-                    return $found[0]->newInstance();
-                }
-            }
-            return null;
-        };
-        $role = $find(Role::class);
-        $permissions = $find(Permissions::class);
-        $route = [
-            'authenticated' => $find(Authenticated::class) !== null || $role !== null || $permissions !== null,
-            'role' => $role instanceof Role ? $role->role : null,
-            'permissions' => $permissions instanceof Permissions ? array_values(array_filter($permissions->permissions, 'is_string')) : null,
-        ];
+        $reflection = $method !== null ? new ReflectionMethod($class, $method) : null;
+        $route = RouteCompiler::access(new ReflectionClass($class), $reflection);
         if ($route['authenticated']) {
             // GET: a WebSocket message carries no CSRF token, the upgrade request was checked as the page's
             (new RouteGuard($this->container))->check($route, 'GET', $request);
@@ -279,6 +266,33 @@ final class LivePlugin extends PluginBase implements ViewHelper, ClientAsset, Re
     {
         $property = property_exists($class, $name) ? new ReflectionProperty($class, $name) : null;
         return $property !== null && $property->isPublic() && !$property->isStatic() && $property->getAttributes(Input::class) !== [];
+    }
+
+    /**
+     * @internal The names of the #[Input] properties of $class.
+     *
+     * @param class-string $class
+     * @return list<string>
+     */
+    public static function inputs(string $class): array
+    {
+        $properties = (new ReflectionClass($class))->getProperties();
+        $names = array_map(static fn (ReflectionProperty $p) => $p->getName(), $properties);
+        return array_values(array_filter($names, static fn (string $name) => self::isInput($class, $name)));
+    }
+
+    /**
+     * @internal What `data-on-*` may name: public methods of $class, not static, no magic.
+     *
+     * @param class-string $class
+     * @return list<ReflectionMethod>
+     */
+    public static function actions(string $class): array
+    {
+        return array_values(array_filter(
+            (new ReflectionClass($class))->getMethods(ReflectionMethod::IS_PUBLIC),
+            static fn (ReflectionMethod $method) => !$method->isStatic() && !str_starts_with($method->getName(), '__'),
+        ));
     }
 
     /**

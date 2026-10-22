@@ -46,12 +46,13 @@ final class Components
             $reflection = new ReflectionClass($class);
             $attribute = ($reflection->getAttributes(Component::class)[0] ?? null)?->newInstance()
                 ?? throw new InvalidArgumentException("$class has no #[Component] attribute");
-            $selector = $attribute->selectorOf($class);
+            $name = $reflection->getShortName();
+            $selector = $attribute->selectorOf($name);
             // A custom element name: it becomes the tag around the component in the page
             if (preg_match('/^[a-z][a-z0-9]*(-[a-z0-9]+)+$/', $selector) !== 1 || isset($this->found[$selector])) {
                 throw new InvalidArgumentException("$class: selector '$selector' must be unique, lowercase and contain a dash");
             }
-            $template = dirname((string) $reflection->getFileName()) . '/' . $attribute->templateOf($class);
+            $template = dirname((string) $reflection->getFileName()) . '/' . $attribute->templateOf($name);
             // Missing at boot, not on the first page that would show it
             if (!is_file($template)) {
                 throw new InvalidArgumentException("$class: template $template not found");

@@ -36,16 +36,15 @@ final class Component
     {
     }
 
-    /** @internal The selector of $class: given, or `app-` and the class name in kebab case */
-    public function selectorOf(string $class): string
+    /** @internal The selector of a class by its short $name: given, or `app-` and $name in kebab case */
+    public function selectorOf(string $name): string
     {
-        $name = substr($class, (int) strrpos('\\' . $class, '\\'));
         return $this->selector ?? 'app-' . strtolower((string) preg_replace('/(?<=[a-z0-9])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])/', '-', $name));
     }
 
-    /** @internal The template file of $class: given, or `<ClassName>.Template.php`, relative to the class's file */
-    public function templateOf(string $class): string
+    /** @internal A class's template by its short $name, relative to its file: given, or `$name.Template.php` */
+    public function templateOf(string $name): string
     {
-        return $this->template ?? substr($class, (int) strrpos('\\' . $class, '\\')) . '.Template.php';
+        return $this->template ?? "$name.Template.php";
     }
 }

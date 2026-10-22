@@ -2,7 +2,7 @@
 
 namespace Waypoint\Live\Tests\Fixtures;
 
-use Waypoint\Live\{Component, Html as Markup};
+use Waypoint\{Html as Markup, Live\Component};
 use Waypoint\Live\Tests\Fixtures\Sub\Phase;
 use function strtoupper as shout;
 

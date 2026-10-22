@@ -3,7 +3,8 @@
 namespace Waypoint\Live\Tests;
 
 use PHPUnit\Framework\TestCase;
-use Waypoint\Live\Check;
+use Waypoint\Live\TemplateChecks;
+use Waypoint\View\Check;
 
 final class CheckTest extends TestCase
 {
@@ -25,6 +26,6 @@ final class CheckTest extends TestCase
 
     public function testProblemsCoverEveryComponentOfTheProject(): void
     {
-        $this->assertContains('#[Every] tick(): a timer calls its method without arguments', array_column(Check::problems(dirname(__DIR__)), 'message'));
+        $this->assertContains('#[Every] tick(): a timer calls its method without arguments', array_column((new TemplateChecks(dirname(__DIR__)))->problems(), 'message'));
     }
 }

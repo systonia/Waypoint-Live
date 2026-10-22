@@ -6,10 +6,9 @@ use Closure;
 use InvalidArgumentException;
 use LogicException;
 use ReflectionClass;
-use Stringable;
 use Throwable;
-use TypeError;
 use WeakMap;
+use Waypoint\Http\View;
 use Waypoint\View\Compiler;
 
 /**
@@ -25,6 +24,9 @@ use Waypoint\View\Compiler;
  */
 final class Template
 {
+    /** @internal An attribute's value between its double quotes, `<?= ?>` in it included: a regex */
+    public const VALUE = '(?:<\?=.*?\?>|[^"])*';
+
     private readonly string $code;
 
     /** @var list<string> Methods named by `data-on-*="method"` in the template. */
@@ -72,7 +74,7 @@ final class Template
                 throw new InvalidArgumentException("line {$problem['line']}: {$problem['message']}");
             }
         }
-        return self::header($class, $directives->uses) . $first . '?>' . self::escapeEchoes(self::children(self::calls($directives->compile(), $actions), $selectors));
+        return self::header($class, $directives->uses) . $first . '?>' . View::escapeEchoes(self::children(self::calls($directives->compile(), $actions), $selectors));
     }
 
     /**
@@ -257,19 +259,6 @@ final class Template
         return null;
     }
 
-    /** @internal What a compiled `<?= ?>` calls: everything escaped, except a Waypoint\Html. */
-    public static function escape(mixed ...$values): string
-    {
-        $html = '';
-        foreach ($values as $value) {
-            if (!is_scalar($value) && $value !== null && !$value instanceof Stringable) {
-                throw new TypeError('A template can only print scalars and Stringable, not ' . get_debug_type($value));
-            }
-            $html .= $value instanceof \Waypoint\Html ? (string) $value : htmlspecialchars((string) $value, ENT_QUOTES | ENT_SUBSTITUTE);
-        }
-        return $html;
-    }
-
     /**
      * Child tags become `<?php echo $__child(...) ?>`: raw, since the child's template escapes its own output.
      *
@@ -280,8 +269,8 @@ final class Template
         if ($selectors === []) {
             return $source;
         }
-        $value = '"((?:<\?=.*?\?>|[^"])*)"';
-        $tag = '/<(' . implode('|', array_map(static fn (string $s) => preg_quote($s, '/'), $selectors)) . ')((?:\s+[A-Za-z_][\w.:-]*(?:="(?:<\?=.*?\?>|[^"])*")?)*)\s*(?:\/>|>\s*<\/\1>)(\r\n|\n|\r|)/s';
+        $value = '"(' . self::VALUE . ')"';
+        $tag = '/<(' . implode('|', array_map(static fn (string $s) => preg_quote($s, '/'), $selectors)) . ')((?:\s+[A-Za-z_][\w.:-]*(?:="' . self::VALUE . '")?)*)\s*(?:\/>|>\s*<\/\1>)(\r\n|\n|\r|)/s';
         return (string) preg_replace_callback($tag, static function (array $m) use ($value): string {
             preg_match_all('/([A-Za-z_][\w.:-]*)(?:=' . $value . ')?/s', $m[2], $attributes, PREG_SET_ORDER);
             $inputs = [];
@@ -373,25 +362,5 @@ final class Template
             $code[] = $i % 2 === 1 ? '(string) (' . $part . ')' : var_export(html_entity_decode((string) $part, ENT_QUOTES | ENT_HTML5), true);
         }
         return implode(' . ', $code);
-    }
-
-    /** `<?= a, b ?>` becomes `<?= \Waypoint\Live\Template::escape(a, b) ?>`. */
-    private static function escapeEchoes(string $source): string
-    {
-        $code = '';
-        $open = false;
-        foreach (token_get_all($source) as $token) {
-            $text = is_array($token) ? $token[1] : $token;
-            if (is_array($token) && $token[0] === T_OPEN_TAG_WITH_ECHO) {
-                $code .= $text . '\\' . self::class . '::escape(';
-                $open = true;
-            } elseif ($open && is_array($token) && $token[0] === T_CLOSE_TAG) {
-                $code = rtrim(rtrim($code), ';') . ')' . $text;
-                $open = false;
-            } else {
-                $code .= $text;
-            }
-        }
-        return $open ? rtrim(rtrim($code), ';') . ')' : $code;
     }
 }

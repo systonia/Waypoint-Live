@@ -12,5 +12,5 @@
     empty
 @endif
 <test-item key="{{ $this->books[0] }}" pick="{{ $this->pick(...) }}"></test-item>
-{{ new \Waypoint\Live\Html('<hr>') }}
+{{ new \Waypoint\Html('<hr>') }}
 mail@example.com @@if

@@ -104,7 +104,7 @@ private function description(): Html
 }
 ```
 
-`Html` is a promise that the markup is safe. Build it from escaped parts, as above, or from another template's output; anything that came from a user stays a string, so that it is escaped. Waypoint's views treat it the same way, so a method can hand the same `Html` to a view and to a template. `Waypoint\Live\Html` is a subclass of it, kept for templates written before `Waypoint\Html` existed.
+`Html` is a promise that the markup is safe. Build it from escaped parts, as above, or from another template's output; anything that came from a user stays a string, so that it is escaped. Waypoint's views treat it the same way, so a method can hand the same `Html` to a view and to a template.
 
 ## The syntax
 
@@ -133,7 +133,7 @@ What differs in a component's template:
 - `@class.` on a child component's tag keeps the template from compiling: a child takes inputs, so put the class on an element inside its template or pass an input.
 - Markup in a comment, `{{/* */}}` or `<!-- -->`, makes no method callable: a `data-on-click` inside one is ignored ([Events and actions](events.md#what-the-browser-can-call)).
 - A value the template needs is best a property or method of the component: typed, and seen by the editor and PHPStan without help. `@code` is for small helpers of the markup, as at the top of the bakery's `OrderTracker.Template.php`: `@code $order = $this->order() @endcode`.
-- [`classes()`](https://github.com/systonia/Waypoint/blob/main/docs/reference/Waypoint/index.md#classes) builds a `class` value in PHP, `classes('step', ['current' => $step === $order->status])`, in every template without an import. It is `Waypoint\classes()`; `Waypoint\Live\classes()` stays as another name for it.
+- [`classes()`](https://github.com/systonia/Waypoint/blob/main/docs/reference/Waypoint/index.md#classes) builds a `class` value in PHP, `classes('step', ['current' => $step === $order->status])`, in every template without an import. It is `Waypoint\classes()`.
 
 ### Whitespace
 

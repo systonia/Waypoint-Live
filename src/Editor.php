@@ -43,7 +43,7 @@ final class Editor implements Provider, Tokens, Imports
                 'label' => $method->getName(),
                 'kind' => 'method',
                 'detail' => $method->getDeclaringClass()->getShortName() . '::' . $method->getName() . '()',
-            ], self::actions($class));
+            ], LivePlugin::actions($class));
         }
         if (preg_match('/<[a-z][a-z0-9-]*$/', $before) === 1) {
             $items = [];
@@ -53,14 +53,15 @@ final class Editor implements Provider, Tokens, Imports
             return $items;
         }
         // At an attribute's name inside a component's tag: its inputs that are not there yet
-        if (preg_match('/<([a-z][a-z0-9]*(?:-[a-z0-9]+)+)((?:\s+[\w.:-]+(?:="(?:<\?=.*?\?>|[^"])*")?)*)\s+[\w.:-]*$/s', $before, $m) === 1) {
+        $value = '"' . Template::VALUE . '"';
+        if (preg_match('/<([a-z][a-z0-9]*(?:-[a-z0-9]+)+)((?:\s+[\w.:-]+(?:=' . $value . ')?)*)\s+[\w.:-]*$/s', $before, $m) === 1) {
             $component = $this->components()[$m[1]][0] ?? null;
             if ($component === null) {
                 return [];
             }
-            preg_match_all('/([\w.:-]+)(?:="(?:<\?=.*?\?>|[^"])*")?/s', $m[2], $present);
+            preg_match_all('/([\w.:-]+)(?:=' . $value . ')?/s', $m[2], $present);
             $items = [];
-            foreach ([...self::inputs($component), ...($class !== null ? ['key'] : [])] as $name) {
+            foreach ([...LivePlugin::inputs($component), ...($class !== null ? ['key'] : [])] as $name) {
                 if (!in_array($name, $present[1], true)) {
                     $items[] = ['label' => $name, 'kind' => 'property', 'detail' => $name === 'key' ? 'keeps the child across renders' : (string) (new \ReflectionProperty($component, $name))->getType(), 'insert' => "$name=\""];
                 }
@@ -136,28 +137,6 @@ final class Editor implements Provider, Tokens, Imports
             }
         }
         return null;
-    }
-
-    /**
-     * @param class-string $class
-     * @return list<ReflectionMethod> What `data-on-*` may name: public, not static, no magic
-     */
-    private static function actions(string $class): array
-    {
-        return array_values(array_filter(
-            (new ReflectionClass($class))->getMethods(ReflectionMethod::IS_PUBLIC),
-            static fn (ReflectionMethod $method) => !$method->isStatic() && !str_starts_with($method->getName(), '__'),
-        ));
-    }
-
-    /**
-     * @param class-string $class
-     * @return list<string>
-     */
-    private static function inputs(string $class): array
-    {
-        $names = array_map(static fn (\ReflectionProperty $p) => $p->getName(), (new ReflectionClass($class))->getProperties());
-        return array_values(array_filter($names, static fn (string $name) => LivePlugin::isInput($class, $name)));
     }
 
     /** @return array<string, array{class-string, string}> */
